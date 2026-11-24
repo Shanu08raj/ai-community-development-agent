@@ -1,111 +1,99 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import "tailwindcss";
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@custom-variant dark (&:where(.dark, .dark *));
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  :root,
+  [data-theme="light"] {
+    --bg-main: #FFFFFF;
+    --bg-secondary: #F5F7FB;
+    --bg-card: #FFFFFF;
+    --color-primary: #164DAA;
+    --color-accent: #2563EB;
+    --text-primary: #172033;
+    --text-secondary: #64748B;
+    --border: #E2E8F0;
+    --admin-sidebar: #0645A5;
+    --admin-sidebar-hover: #0A52C0;
+    --admin-content-bg: #F5F7FB;
+    --badge-success-bg: #DCFCE7;
+    --badge-success-text: #166534;
+    --badge-warning-bg: #FEF3C7;
+    --badge-warning-text: #92400E;
+    --badge-danger-bg: #FEE2E2;
+    --badge-danger-text: #991B1B;
+    --badge-info-bg: #DBEAFE;
+    --badge-info-text: #1E40AF;
+  }
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+  :root.dark,
+  [data-theme="dark"],
+  .dark {
+    --bg-main: #0B1120;
+    --bg-secondary: #111827;
+    --bg-card: #151F32;
+    --color-primary: #3B82F6;
+    --color-accent: #60A5FA;
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --border: #263449;
+    --admin-sidebar: #06234D;
+    --admin-sidebar-hover: #0B336E;
+    --admin-content-bg: #0B1120;
+    --badge-success-bg: #064E3B;
+    --badge-success-text: #A7F3D0;
+    --badge-warning-bg: #78350F;
+    --badge-warning-text: #FDE68A;
+    --badge-danger-bg: #7F1D1D;
+    --badge-danger-text: #FECACA;
+    --badge-info-bg: #1E3A8A;
+    --badge-info-text: #BFDBFE;
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* Custom utility colors mapped to design tokens */
+.bg-main { background-color: var(--bg-main); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-card { background-color: var(--bg-card); }
+.bg-brand-primary { background-color: var(--color-primary); }
+.bg-brand-accent { background-color: var(--color-accent); }
+.bg-admin-sidebar { background-color: var(--admin-sidebar); }
+.bg-admin-content { background-color: var(--admin-content-bg); }
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
+.text-text-primary { color: var(--text-primary); }
+.text-text-secondary { color: var(--text-secondary); }
+.text-brand-primary { color: var(--color-primary); }
+.text-brand-accent { color: var(--color-accent); }
 
-body {
-  margin: 0;
+.border-theme { border-color: var(--border); }
+
+/* Transitions */
+.theme-transition {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
