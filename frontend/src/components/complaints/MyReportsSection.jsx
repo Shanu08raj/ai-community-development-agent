@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Button } from '../common/Button';
 import { CitizenReportDetailModal } from './CitizenReportDetailModal';
+import { VoiceOutput } from '../voice/VoiceOutput';
 import { complaintService } from '../../services/complaintService';
 import { myReportsService } from '../../services/myReportsService';
 import { useToast } from '../../context/ToastContext';
@@ -268,25 +269,32 @@ export const MyReportsSection = ({
                 </div>
 
                 {/* Card Footer Actions */}
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-[#263449] flex items-center justify-between gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenDetails(report)}
-                    leftIcon={<Eye className="w-3.5 h-3.5" />}
-                    className="text-xs flex-1"
-                  >
-                    View Details
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveReport(report.referenceId)}
-                    title="Remove from My Reports"
-                    aria-label={`Remove ${report.referenceId} from My Reports`}
-                    className="p-2 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border border-transparent hover:border-rose-200 dark:hover:border-rose-900 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-[#263449] space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenDetails(report)}
+                      leftIcon={<Eye className="w-3.5 h-3.5" />}
+                      className="text-xs flex-1"
+                    >
+                      View Details
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveReport(report.referenceId)}
+                      title="Remove from My Reports"
+                      aria-label={`Remove ${report.referenceId} from My Reports`}
+                      className="p-2 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border border-transparent hover:border-rose-200 dark:hover:border-rose-900 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <VoiceOutput
+                    label="Listen"
+                    compact
+                    text={`Report ${report.referenceId}: ${report.title}. Area: ${report.area}. Status: ${report.status}. Priority: ${report.priority}.`}
+                  />
                 </div>
               </div>
             );

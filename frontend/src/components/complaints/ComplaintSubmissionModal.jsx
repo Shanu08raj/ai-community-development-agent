@@ -2,11 +2,17 @@ import { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { SearchableSelect } from '../common/SearchableSelect';
+import { VoiceInput } from '../voice/VoiceInput';
+import { VoiceOutput } from '../voice/VoiceOutput';
+import { ExtractedFieldsPreview } from '../voice/ExtractedFieldsPreview';
 import { INDIA_LOCATIONS, getDistrictsForState } from '../../data/indiaLocations';
+import { getVoiceGuideText, buildConfirmationSpeechText } from '../../data/voiceGuides';
+import { voiceService } from '../../services/voiceService';
 import { complaintService } from '../../services/complaintService';
 import { myReportsService } from '../../services/myReportsService';
 import { downloadComplaintReceipt } from '../../utils/receiptGenerator';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   UploadCloud,
   CheckCircle2,
@@ -28,17 +34,6 @@ const CATEGORIES = [
   'Other',
 ];
 
-const LANGUAGES = [
-  { value: 'English', label: 'English' },
-  { value: 'Hindi', label: 'हिन्दी (Hindi)' },
-  { value: 'Kannada', label: 'ಕನ್ನಡ (Kannada)' },
-  { value: 'Tamil', label: 'தமிழ் (Tamil)' },
-  { value: 'Telugu', label: 'తెలుగు (Telugu)' },
-  { value: 'Marathi', label: 'मराठी (Marathi)' },
-  { value: 'Assamese', label: 'অসমীয়া (Assamese)' },
-  { value: 'Manipuri (Meitei)', label: 'মৈতৈলোন্ (Manipuri / Meitei)' },
-];
-
 const STATE_OPTIONS = INDIA_LOCATIONS.map((loc) => ({
   value: loc.name,
   label: loc.name,
@@ -47,11 +42,15 @@ const STATE_OPTIONS = INDIA_LOCATIONS.map((loc) => ({
 
 export const ComplaintSubmissionModal = ({
   isOpen,
+  initialMode = 'standard',
   onClose,
   onSuccess,
   onReportsChanged,
 }) => {
+  const isVoiceMode = initialMode === 'voice';
   const { addToast } = useToast();
+  const { selectedLanguage, languages, getLanguageMeta } = useLanguage();
+  const defaultAppLangMeta = getLanguageMeta(selectedLanguage);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -60,7 +59,6 @@ export const ComplaintSubmissionModal = ({
     state: '',
     district: '',
     area: '',
-    preferredLanguage: 'English',
     contactInfo: '',
   });
 
@@ -70,6 +68,27 @@ export const ComplaintSubmissionModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedData, setSubmittedData] = useState(null);
   const [rememberOnDevice, setRememberOnDevice] = useState(true);
+  const [speechLangOverride, setSpeechLangOverride] = useState(null);
+  const [preferredLangOverride, setPreferredLangOverride] = useState(null);
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [extractedFields, setExtractedFields] = useState(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+
+  const speechLang =
+    speechLangOverride && speechLangOverride.forGlobal === selectedLanguage
+      ? speechLangOverride.value
+      : selectedLanguage || 'auto';
+
+  const preferredLanguage =
+    preferredLangOverride && preferredLangOverride.forGlobal === selectedLanguage
+      ? preferredLangOverride.value
+      : defaultAppLangMeta?.name || 'English';
+
+  const setSpeechLang = (nextCode) =>
+    setSpeechLangOverride({ forGlobal: selectedLanguage, value: nextCode });
+
+  const setPreferredLanguageName = (nextName) =>
+    setPreferredLangOverride({ forGlobal: selectedLanguage, value: nextName });
 
   const resetForm = () => {
     setFormData({
@@ -79,7 +98,6 @@ export const ComplaintSubmissionModal = ({
       state: '',
       district: '',
       area: '',
-      preferredLanguage: 'English',
       contactInfo: '',
     });
     setSelectedFile(null);
@@ -87,6 +105,11 @@ export const ComplaintSubmissionModal = ({
     setSubmitError('');
     setSubmittedData(null);
     setRememberOnDevice(true);
+    setSpeechLangOverride(null);
+    setPreferredLangOverride(null);
+    setCategoryTouched(false);
+    setExtractedFields(null);
+    setIsExtracting(false);
   };
 
   const handleClose = () => {
@@ -123,7 +146,10 @@ export const ComplaintSubmissionModal = ({
     setSubmitError('');
     setIsSubmitting(true);
     try {
-      const result = await complaintService.submitComplaint(formData);
+      const result = await complaintService.submitComplaint({
+        ...formData,
+        preferredLanguage,
+      });
       const snapshot = {
         title: result.complaint?.title || formData.title.trim(),
         category: result.complaint?.category || formData.category,
@@ -203,6 +229,7 @@ export const ComplaintSubmissionModal = ({
   };
 
   const districtOptions = getDistrictsForState(formData.state);
+  const preferredLangMeta = getLanguageMeta(preferredLanguage);
 
   const handleStateChange = (nextState) => {
     setFormData((prev) => ({
@@ -212,14 +239,206 @@ export const ComplaintSubmissionModal = ({
     }));
   };
 
+  const runStructuredExtraction = async (text, meta) => {
+    const cleaned = String(text || '').trim();
+    if (!cleaned) return;
+    setIsExtracting(true);
+    try {
+      const langHint =
+        meta?.detectedLanguageCode && meta.detectedLanguageCode !== 'und'
+          ? meta.detectedLanguageCode
+          : speechLang;
+      const extracted = await voiceService.extractComplaintFields({
+        transcript: cleaned,
+        language: langHint,
+        existingFields: {
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          categoryTouched,
+          state: formData.state,
+          district: formData.district,
+          area: formData.area,
+        },
+      });
+      setExtractedFields(extracted);
+    } catch (err) {
+      addToast(
+        err?.message || 'Could not auto-extract fields; you can still insert text or fill fields manually.',
+        'info'
+      );
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const applyExtractedFieldsToForm = (overwriteExisting = true) => {
+    if (!extractedFields) return;
+    setFormData((prev) => {
+      const nextState =
+        extractedFields.state && (overwriteExisting || !prev.state)
+          ? extractedFields.state
+          : prev.state;
+      const allowedDistricts = getDistrictsForState(nextState);
+      const validExtractedDist =
+        extractedFields.district && allowedDistricts.includes(extractedFields.district)
+          ? extractedFields.district
+          : '';
+      const nextDistrict =
+        validExtractedDist && (overwriteExisting || !prev.district)
+          ? validExtractedDist
+          : nextState === prev.state
+          ? prev.district
+          : '';
+      const rawWard = String(extractedFields.ward || '').trim();
+      const formattedArea = rawWard
+        ? /^ward\b/i.test(rawWard)
+          ? rawWard
+          : `Ward ${rawWard}`
+        : '';
+      const nextArea =
+        formattedArea && (overwriteExisting || !prev.area.trim())
+          ? formattedArea
+          : prev.area;
+      const nextCategory =
+        extractedFields.category &&
+        CATEGORIES.includes(extractedFields.category) &&
+        (overwriteExisting || !categoryTouched)
+          ? extractedFields.category
+          : prev.category;
+      const nextTitle =
+        extractedFields.title && (overwriteExisting || !prev.title.trim())
+          ? extractedFields.title
+          : prev.title;
+      const nextDesc =
+        extractedFields.description && (overwriteExisting || !prev.description.trim())
+          ? extractedFields.description
+          : prev.description;
+
+      return {
+        ...prev,
+        title: nextTitle,
+        description: nextDesc,
+        category: nextCategory,
+        state: nextState,
+        district: nextDistrict,
+        area: nextArea,
+      };
+    });
+    setErrors({});
+    setExtractedFields(null);
+    addToast('Extracted fields applied for your review before submission.', 'success');
+  };
+
+  const applySpokenTranscript = (text, meta, append = false) => {
+    const cleaned = String(text || '').trim();
+    if (!cleaned) return;
+    if (meta?.detectedLanguage && speechLang === 'auto') {
+      const matched = languages.find(
+        (l) => l.name.toLowerCase() === meta.detectedLanguage.toLowerCase()
+      );
+      if (matched) setPreferredLanguageName(matched.name);
+    }
+    setFormData((prev) => {
+      const nextDescription =
+        append && prev.description.trim()
+          ? `${prev.description.trim()} ${cleaned}`
+          : cleaned;
+      return {
+        ...prev,
+        description: nextDescription,
+      };
+    });
+    if (!append) {
+      runStructuredExtraction(cleaned, meta);
+    }
+  };
+
+  const voiceSection = (
+    <div
+      data-testid="voice-complaint-section"
+      className={
+        isVoiceMode
+          ? 'space-y-3 rounded-xl ring-2 ring-blue-400/70 dark:ring-blue-500/60 p-0.5'
+          : 'space-y-3'
+      }
+    >
+      <VoiceInput
+        selectedLanguage={speechLang}
+        onLanguageChange={(nextCode) => {
+          setSpeechLang(nextCode);
+          if (nextCode !== 'auto') {
+            const entry = getLanguageMeta(nextCode);
+            if (entry?.name) {
+              setPreferredLanguageName(entry.name);
+            }
+          }
+        }}
+        onTranscriptConfirmed={(meta) => {
+          if (meta?.detectedLanguage && speechLang === 'auto' && meta.detectedLanguage !== 'Undetermined') {
+            const matched = languages.find(
+              (l) => l.name.toLowerCase() === meta.detectedLanguage.toLowerCase()
+            );
+            if (matched) {
+              setPreferredLanguageName(matched.name);
+            }
+          }
+          if (meta?.transcript) {
+            runStructuredExtraction(meta.transcript, meta);
+          }
+        }}
+        onExtractFields={(text, meta) => runStructuredExtraction(text, meta)}
+        isExtracting={isExtracting}
+        onInsertTranscript={(text, meta) => applySpokenTranscript(text, meta, false)}
+        onAppendTranscript={(text, meta) => applySpokenTranscript(text, meta, true)}
+        onClearTranscript={() => setExtractedFields(null)}
+      />
+
+      <ExtractedFieldsPreview
+        extracted={extractedFields}
+        onChangeField={(field, value) =>
+          setExtractedFields((prev) => (prev ? { ...prev, [field]: value } : prev))
+        }
+        onResolveLocation={(resolvedState, resolvedDist) =>
+          setExtractedFields((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  state: resolvedState || prev.state,
+                  district: resolvedDist || '',
+                  locationStatus: resolvedState && resolvedDist ? 'verified' : 'partial',
+                  ambiguousLocations: [],
+                  locationMismatch: null,
+                  warnings: (prev.warnings || []).filter(
+                    (w) => !w.toLowerCase().includes('ambiguous') && !w.toLowerCase().includes('belong')
+                  ),
+                }
+              : prev
+          )
+        }
+        onApplyEmptyOnly={() => applyExtractedFieldsToForm(false)}
+        onApplyAll={() => applyExtractedFieldsToForm(true)}
+        onDismiss={() => setExtractedFields(null)}
+      />
+    </div>
+  );
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title={submittedData ? 'Report Submitted Successfully' : 'Report a Community Problem'}
+      title={
+        submittedData
+          ? 'Report Submitted Successfully'
+          : isVoiceMode
+          ? 'Voice Complaint Input'
+          : 'Report a Community Problem'
+      }
       subtitle={
         submittedData
           ? 'Save your tracking credentials now. The secret tracking code is shown only once.'
+          : isVoiceMode
+          ? 'Speak in your preferred language to pre-fill title, description, category, and location for review before submitting.'
           : 'AI will analyze your report and suggest relevant clustering and local authorities for human review.'
       }
       maxWidth="max-w-2xl"
@@ -351,7 +570,23 @@ export const ComplaintSubmissionModal = ({
             </span>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons & Listen */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <VoiceOutput
+              label="Listen to Confirmation Summary"
+              language={preferredLangMeta.code}
+              compact
+              text={buildConfirmationSpeechText(
+                {
+                  referenceId: submittedData.referenceId,
+                  category: submittedData.snapshot?.category,
+                  area: submittedData.snapshot?.area,
+                },
+                preferredLangMeta.code
+              )}
+            />
+          </div>
+
           <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#263449]">
             <Button variant="secondary" onClick={handleClose}>
               Done
@@ -371,12 +606,36 @@ export const ComplaintSubmissionModal = ({
       ) : (
         /* FORM SCREEN */
         <form onSubmit={handleSubmit} className="space-y-4">
-          {submitError && (
-            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{submitError}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-[#263449]">
+            <span className="text-[11px] text-slate-600 dark:text-slate-300">
+              Need audio instructions? Listen in your preferred language or speak your issue below.
+            </span>
+            <VoiceOutput
+              label="Listen to Form Guide"
+              language={preferredLangMeta.code}
+              compact
+              text={getVoiceGuideText('formGuide', preferredLangMeta.code)}
+            />
+          </div>
+
+          {(submitError || Object.keys(errors).length > 0) && (
+            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800 text-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>
+                  {submitError || 'Please review the highlighted fields before submitting.'}
+                </span>
+              </div>
+              <VoiceOutput
+                label="Listen to Error Notice"
+                language={preferredLangMeta.code}
+                compact
+                text={submitError || Object.values(errors).join('. ')}
+              />
             </div>
           )}
+
+          {isVoiceMode && voiceSection}
 
           {/* Title */}
           <div>
@@ -385,6 +644,7 @@ export const ComplaintSubmissionModal = ({
             </label>
             <input
               type="text"
+              dir={preferredLangMeta.rtl ? 'rtl' : 'ltr'}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="e.g. Broken water pipeline leaking near Block C market"
@@ -409,7 +669,10 @@ export const ComplaintSubmissionModal = ({
               </label>
               <select
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                onChange={(e) => {
+                  setCategoryTouched(true);
+                  setFormData({ ...formData, category: e.target.value });
+                }}
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-[#263449] bg-white dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {CATEGORIES.map((cat) => (
@@ -474,6 +737,9 @@ export const ComplaintSubmissionModal = ({
             />
           </div>
 
+          {/* Voice Input & Editable Description */}
+          {!isVoiceMode && voiceSection}
+
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">
@@ -481,6 +747,7 @@ export const ComplaintSubmissionModal = ({
             </label>
             <textarea
               rows={3}
+              dir={preferredLangMeta.rtl ? 'rtl' : 'ltr'}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Describe the issue, how long it has persisted, and how it impacts neighbors..."
@@ -504,13 +771,15 @@ export const ComplaintSubmissionModal = ({
                 Preferred Language
               </label>
               <select
-                value={formData.preferredLanguage}
-                onChange={(e) => setFormData({ ...formData, preferredLanguage: e.target.value })}
+                value={preferredLanguage}
+                onChange={(e) => setPreferredLanguageName(e.target.value)}
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-[#263449] bg-white dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {LANGUAGES.map((lang) => (
-                  <option key={lang.value} value={lang.value}>
-                    {lang.label}
+                {languages.map((lang) => (
+                  <option key={lang.code} value={lang.name}>
+                    {lang.nativeName === lang.name
+                      ? lang.name
+                      : `${lang.nativeName} (${lang.name})`}
                   </option>
                 ))}
               </select>

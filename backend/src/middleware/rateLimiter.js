@@ -56,6 +56,34 @@ export function createTrackingLimiter(maxRequests = 120) {
   });
 }
 
+export function createVoiceSttLimiter(maxRequests = 30) {
+  return rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: maxRequests,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: buildLimitHandler(
+      'VOICE_STT_RATE_LIMIT',
+      'Speech-to-text request limit reached. Please wait a moment or type your complaint directly.'
+    ),
+  });
+}
+
+export function createVoiceTtsLimiter(maxRequests = 90) {
+  return rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: maxRequests,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: buildLimitHandler(
+      'VOICE_TTS_RATE_LIMIT',
+      'Audio playback limit exceeded. Please wait briefly before retrying.'
+    ),
+  });
+}
+
 export const loginLimiter = createLoginLimiter();
 export const submissionLimiter = createSubmissionLimiter();
 export const trackingLimiter = createTrackingLimiter();
+export const voiceSttLimiter = createVoiceSttLimiter();
+export const voiceTtsLimiter = createVoiceTtsLimiter();

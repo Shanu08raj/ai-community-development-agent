@@ -903,3 +903,178 @@ Called by Node.js backend upon new citizen submission to trigger the LangGraph p
   }
 }
 ```
+
+---
+
+## 10. Multilingual Voice Interaction APIs (STT & TTS)
+
+These endpoints are public-facing through the Express backend gateway (`/api/v1/voice/*`) and proxy internally to the Python AI service (`/api/v1/voice/*`) with `X-Internal-Secret` authentication. No raw uploaded audio or synthesized WAV files are stored permanently on disk or retained in MongoDB.
+
+### 10.1 `GET /api/v1/voice/languages`
+
+- **Purpose:** Returns the capability matrix for **English + all 22 Eighth Schedule Indian languages (23 entries total)**, including honest STT/TTS support levels, preloaded vs on-demand Piper voice availability, RTL script flags (`ur`, `ks`, `sd`), limitations, and active provider toggles.
+- **Authentication:** Public (no token required).
+- **Resilience:** If the Python AI service is unreachable (`ECONNREFUSED` / timeout), returns `200 OK` with `providers.voiceServiceReachable: false` and explicit degraded fallback statuses rather than breaking the text-based complaint workflow.
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "languages": [
+        {
+          "code": "hi",
+          "name": "Hindi",
+          "nativeName": "हिन्दी",
+          "script": "Devanagari",
+          "rtl": false,
+          "scheduledEighth": true,
+          "initialSupported": true,
+          "sttAvailable": true,
+          "sttSupportLevel": "local_whisper_tested_partial",
+          "sttProvider": "faster-whisper",
+          "ttsAvailable": true,
+          "ttsSupportLevel": "local_piper_verified",
+          "ttsProvider": "piper-tts",
+          "piperVoices": [
+            {
+              "id": "hi_IN-rohan-medium",
+              "label": "Rohan (Hindi - India)",
+              "locale": "hi_IN",
+              "sizeMb": 60,
+              "downloaded": true,
+              "preloadedRecommended": true
+            }
+          ],
+          "voiceDownloaded": true,
+          "qualityStatus": "tts_verified_stt_script_drift",
+          "limitations": "Piper TTS verified locally (~0.40s warm); Whisper 'base' INT8 often emits Perso-Arabic script or Urdu auto-tags on Hindi speech (~57-60% conf). Review before submit or evaluate 'small'/Bhashini.",
+          "recommendHumanReview": true
+        }
+      ],
+      "providers": {
+        "localSttEnabled": true,
+        "localSttModel": "faster-whisper-base-int8",
+        "localTtsEnabled": true,
+        "localTtsEngine": "piper-tts",
+        "piperAutoDownload": false,
+        "optionalBhashiniEnabled": false,
+        "voiceServiceReachable": true
+      }
+    }
+  }
+  ```
+
+### 10.2 `POST /api/v1/voice/transcribe`
+
+- **Purpose:** Accepts a recorded complaint audio clip (`multipart/form-data`), validates format/size/duration, transcribes speech into an editable transcript (preserving original language & script without forced English translation), and refines language detection across Indic scripts and Devanagari languages.
+- **Authentication:** Public (rate-limited: `30` requests per `10` minutes per IP via `voiceSttLimiter`; internal hop uses `X-Internal-Secret`).
+- **Request (`multipart/form-data`):**
+  - `audio` *(file, required)*: Audio binary (`.webm`, `.ogg`, `.wav`, `.mp3`, `.m4a`, `.aac`, `.flac`), max `10 MB` (`VOICE_MAX_AUDIO_BYTES`), min `64` bytes, max duration `120s` (`VOICE_MAX_AUDIO_SECONDS`).
+  - `language` *(string, optional, default `"auto"`)*: ISO code, language name, or `"auto"`.
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "transcript": "वार्ड 12 में पानी की पाइपलाइन टूट गई है",
+      "detectedLanguage": "Hindi",
+      "detectedLanguageCode": "hi",
+      "languageConfidence": 94,
+      "transcriptConfidence": 86,
+      "qualityStatus": "good",
+      "durationSeconds": 3.4,
+      "rtl": false,
+      "provider": "faster-whisper",
+      "model": "base-int8",
+      "recommendHumanReview": false,
+      "warnings": []
+    }
+  }
+  ```
+- **Validation & Error Codes:**
+  - `413 AUDIO_TOO_LARGE`: Exceeds `10 MB` upload cap.
+  - `422 AUDIO_FILE_REQUIRED`: Missing `audio` form part.
+  - `422 EMPTY_AUDIO_RECORDING`: Payload under `64` bytes or silent/empty clip.
+  - `422 INVALID_AUDIO_FORMAT`: Unsupported MIME type or invalid container magic bytes.
+  - `422 AUDIO_DURATION_EXCEEDED`: Recording exceeds `120` seconds.
+  - `422 STT_LANGUAGE_UNSUPPORTED_LOCALLY`: Requested language (e.g., Manipuri `mni`, Dogri `doi`) is not supported by local Whisper; directs citizen to type or enable optional Bhashini.
+  - `429 VOICE_STT_RATE_LIMIT`: Too many transcription requests from client.
+  - `503 VOICE_STT_DISABLED` / `STT_DEPENDENCY_MISSING` / `STT_MODEL_LOAD_FAILED`: Local STT unavailable.
+
+### 10.3 `POST /api/v1/voice/synthesize`
+
+- **Purpose:** Synthesizes non-sensitive instructions, complaint summaries, or public tracking status updates into `audio/wav` PCM speech using the matching local Piper voice (or optional Bhashini provider). Never silently substitutes an unrelated language voice.
+- **Authentication:** Public (rate-limited: `90` requests per `10` minutes per IP via `voiceTtsLimiter`; internal hop uses `X-Internal-Secret`).
+- **Request (`application/json`):**
+  ```json
+  {
+    "text": "आपकी शिकायत दर्ज हो गई है। संदर्भ संख्या JS-2026-0042 है।",
+    "language": "hi",
+    "voiceId": "hi_IN-rohan-medium",
+    "speed": 1.0
+  }
+  ```
+  - `text`: Required, `1..1500` characters (`VOICE_MAX_TTS_CHARS`).
+  - `language`: Optional, default `"en"`.
+  - `voiceId`: Optional registered Piper voice identifier.
+  - `speed`: Optional number in `[0.75, 1.5]`, default `1.0`.
+- **Success Response (`200 OK`, binary `audio/wav`):**
+  - Headers: `Content-Type: audio/wav`, `Cache-Control: no-store`, `X-Voice-Provider`, `X-Voice-Id`, `X-Voice-Language`, `X-Voice-Sample-Rate`.
+- **Error Responses:**
+  - `422 TTS_VOICE_UNAVAILABLE` / `TTS_VOICE_NOT_DOWNLOADED`: Indicates honest absence of matching local voice (and includes `browserFallbackAllowed: true` so the client checks only matching-language `speechSynthesis` voices).
+  - `422 EMPTY_TTS_TEXT` / `VALIDATION_ERROR`: Invalid text length or out-of-range speed.
+  - `429 VOICE_TTS_RATE_LIMIT`: Rate limit exceeded.
+
+### 10.4 `POST /api/v1/voice/extract-complaint`
+
+- **Purpose:** Deterministically extracts structured civic complaint fields (`title`, `description`, `category`, `categoryCode`, `state`, `district`, `ward`, `area`) from a spoken or edited transcript without auto-submitting the complaint or inventing missing ward numbers. Validates districts against the official 36 Indian States/UTs dataset (`india_locations.json`), detects district-state mismatches or ambiguity (e.g., `"Bangalore"` -> `Bengaluru Urban` vs `Bengaluru Rural`), and flags conflicts against already-typed form values.
+- **Authentication:** Public (rate-limited via `voiceSttLimiter`; internal hop to FastAPI uses `X-Internal-Secret`).
+- **Request (`application/json`):**
+  ```json
+  {
+    "transcript": "Water has not been coming for three days. My ward number is 13, my state is Karnataka, and my district is Bengaluru Urban.",
+    "language": "en",
+    "existingFields": {
+      "title": "",
+      "description": "",
+      "category": "Water Supply",
+      "categoryTouched": false,
+      "state": "",
+      "district": "",
+      "area": ""
+    }
+  }
+  ```
+  - `transcript`: Required, `1..3000` characters.
+  - `language`: Optional hint (`"auto"` or ISO code/name).
+  - `existingFields`: Optional object representing user-entered values so manual inputs are never silently overwritten.
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "originalTranscript": "Water has not been coming for three days. My ward number is 13, my state is Karnataka, and my district is Bengaluru Urban.",
+      "detectedLanguage": "English",
+      "detectedLanguageCode": "en",
+      "title": "Water Supply Problem",
+      "description": "Water has not been coming for three days.",
+      "category": "Water Supply",
+      "categoryCode": "WATER_SUPPLY",
+      "state": "Karnataka",
+      "district": "Bengaluru Urban",
+      "ward": "13",
+      "area": "Ward 13",
+      "locationStatus": "verified",
+      "ambiguousLocations": [],
+      "locationMismatch": null,
+      "existingFieldConflicts": [],
+      "warnings": []
+    }
+  }
+  ```
+- **Validation & Error Codes:**
+  - `422 VALIDATION_ERROR`: Missing, empty, or >3000-character transcript.
+  - `429 VOICE_STT_RATE_LIMIT`: Rate limit exceeded.
+  - `503 VOICE_SERVICE_UNAVAILABLE`: AI extraction service unreachable (frontend keeps transcript and manual entry intact).
+
+```

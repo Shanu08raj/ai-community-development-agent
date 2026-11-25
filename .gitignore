@@ -28,3 +28,8 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Downloaded local voice model weights (Piper / Whisper) & scratch audio
+ai-service/models/
+*.wav
+*.webm

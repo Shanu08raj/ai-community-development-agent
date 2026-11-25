@@ -11,7 +11,11 @@ class RecommendedAuthorityResponse(BaseModel):
 
 class ComplaintAnalysisOutput(BaseModel):
     detectedLanguage: str
-    detectedLanguageCode: Literal["en", "hi", "kn", "ta", "te", "mr", "as", "mni", "und"]
+    detectedLanguageCode: Literal[
+        "as", "bn", "brx", "doi", "en", "gu", "hi", "kn", "ks", "kok",
+        "mai", "ml", "mni", "mr", "ne", "or", "pa", "sa", "sat", "sd",
+        "ta", "te", "ur", "und",
+    ]
     languageConfidence: int = Field(ge=0, le=100)
     languageProcessingMode: str
     sanitizedSummary: str

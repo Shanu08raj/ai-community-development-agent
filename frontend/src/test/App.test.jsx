@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import App from '../App';
+import { DEFAULT_VOICE_LANGUAGES } from '../data/voiceLanguages';
 
 function createApiMockState() {
   const complaints = [
@@ -310,6 +311,62 @@ function createApiMockState() {
 
     if (path === '/admin/audit-logs' && method === 'GET') {
       return jsonResp(200, { success: true, data: auditLogs });
+    }
+
+    if (path === '/voice/languages' && method === 'GET') {
+      return jsonResp(200, {
+        success: true,
+        data: {
+          languages: DEFAULT_VOICE_LANGUAGES,
+          providers: { localSttEnabled: true, localTtsEnabled: true, voiceServiceReachable: true },
+        },
+      });
+    }
+
+    if (path === '/voice/transcribe' && method === 'POST') {
+      return jsonResp(200, {
+        success: true,
+        data: {
+          transcript:
+            'Water has not been coming for three days. My ward number is 13, my state is Karnataka, and my district is Bengaluru Urban.',
+          detectedLanguage: 'English',
+          detectedLanguageCode: 'en',
+          languageConfidence: 96,
+          transcriptConfidence: 90,
+          qualityStatus: 'good',
+          durationSeconds: 4.1,
+          rtl: false,
+          provider: 'faster-whisper',
+          model: 'small-int8',
+          recommendHumanReview: false,
+          warnings: [],
+        },
+      });
+    }
+
+    if (path === '/voice/extract-complaint' && method === 'POST') {
+      const body = JSON.parse(init.body || '{}');
+      return jsonResp(200, {
+        success: true,
+        data: {
+          originalTranscript: body.transcript || '',
+          detectedLanguage: 'English',
+          detectedLanguageCode: 'en',
+          title: 'Water Supply Problem',
+          description: 'Water has not been coming for three days.',
+          category: 'Water Supply',
+          categoryCode: 'WATER_SUPPLY',
+          state: 'Karnataka',
+          district: 'Bengaluru Urban',
+          ward: '13',
+          area: 'Ward 13',
+          locationStatus: 'verified',
+          ambiguousLocations: [],
+          locationMismatch: null,
+          existingFieldConflicts: [],
+          warnings: [],
+        },
+      });
     }
 
     return jsonResp(404, { success: false, error: { code: 'ROUTE_NOT_FOUND', message: 'Not found' } });
@@ -791,5 +848,110 @@ describe('JanSetu AI Integrated Frontend Test Suite', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /View Details/i }));
     expect(await screen.findByText(/Bengaluru Urban, Karnataka/i)).toBeInTheDocument();
+  });
+
+  it('16. Homepage renders Report a Problem, Voice Complaint, Track My Complaint in order and supports both voice entry points cleanly without auto-submit', async () => {
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:hero-voice-rec');
+    URL.revokeObjectURL = vi.fn();
+
+    let recorderInstance = null;
+    class MockMediaRecorder {
+      constructor(stream, opts = {}) {
+        this.stream = stream;
+        this.mimeType = opts.mimeType || 'audio/webm';
+        this.state = 'inactive';
+        recorderInstance = this;
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        const payload = new Uint8Array(256).fill(68);
+        this.ondataavailable?.({ data: new Blob([payload], { type: 'audio/webm' }) });
+        this.onstop?.();
+      }
+    }
+    MockMediaRecorder.isTypeSupported = () => true;
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        }),
+      },
+    });
+
+    try {
+      render(<App />);
+
+      // Verify exact hero CTA button order: Report a Problem -> Voice Complaint -> Track My Complaint
+      const reportBtn = screen.getAllByRole('button', { name: /^Report a Problem$/i })[0];
+      const voiceBtn = screen.getByRole('button', { name: /^Voice Complaint$/i });
+      const trackBtn = screen.getByRole('button', { name: /^Track My Complaint$/i });
+      expect(reportBtn).toBeInTheDocument();
+      expect(voiceBtn).toBeInTheDocument();
+      expect(trackBtn).toBeInTheDocument();
+      expect(
+        Boolean(reportBtn.compareDocumentPosition(voiceBtn) & Node.DOCUMENT_POSITION_FOLLOWING)
+      ).toBe(true);
+      expect(
+        Boolean(voiceBtn.compareDocumentPosition(trackBtn) & Node.DOCUMENT_POSITION_FOLLOWING)
+      ).toBe(true);
+
+      // Entry Point A: Homepage -> Voice Complaint -> direct voice mode -> record -> extract -> edit -> submit -> track
+      fireEvent.click(voiceBtn);
+      expect(await screen.findByRole('heading', { name: /Voice Complaint Input/i })).toBeInTheDocument();
+      expect(screen.getByTestId('voice-complaint-section')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Speak Your Complaint/i }));
+      await waitFor(() => expect(recorderInstance?.state).toBe('recording'));
+      fireEvent.click(screen.getByRole('button', { name: /Stop Recording/i }));
+
+      expect(await screen.findByTestId('extracted-fields-preview')).toBeInTheDocument();
+      expect(screen.getByLabelText(/Extracted title/i).value).toBe('Water Supply Problem');
+
+      // Correct extracted title before applying; never auto-submits
+      fireEvent.change(screen.getByLabelText(/Extracted title/i), {
+        target: { value: 'Severe Water Supply Outage in Ward 13' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Apply Extracted Fields to Form/i }));
+      expect(screen.queryByText(/Report Submitted Successfully/i)).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Submit Complaint$/i }));
+      expect(await screen.findByText(/Report Submitted Successfully/i)).toBeInTheDocument();
+
+      // Track newly submitted voice complaint cleanly
+      fireEvent.click(screen.getByRole('button', { name: /Track This Complaint Now/i }));
+      expect(await screen.findByText(/Resolution Lifecycle Timeline/i)).toBeInTheDocument();
+      expect(
+        screen.getAllByText(/Severe Water Supply Outage in Ward 13/i).length
+      ).toBeGreaterThanOrEqual(2);
+
+      // Close tracking modal and return to homepage
+      fireEvent.click(screen.getByLabelText(/Close modal/i));
+
+      // Entry Point B: Homepage -> Report a Problem -> normal form with internal voice complaint option preserved
+      fireEvent.click(screen.getAllByRole('button', { name: /^Report a Problem$/i })[0]);
+      expect(await screen.findByRole('heading', { name: /Report a Community Problem/i })).toBeInTheDocument();
+      expect(screen.getByText(/Voice Complaint Input \(Optional\)/i)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Speak Your Complaint/i }));
+      await waitFor(() => expect(recorderInstance?.state).toBe('recording'));
+      fireEvent.click(screen.getByRole('button', { name: /Stop Recording/i }));
+
+      expect(await screen.findByTestId('extracted-fields-preview')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Apply Extracted Fields to Form/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^Submit Complaint$/i }));
+      expect(await screen.findByText(/Report Submitted Successfully/i)).toBeInTheDocument();
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+      delete navigator.mediaDevices;
+      delete globalThis.MediaRecorder;
+    }
   });
 });

@@ -897,3 +897,23 @@ A lightweight pytest harness in `ai-service/tests/` verifies each node in isolat
 - [ ] No node attempts to change complaint status or simulate government dispatch.
 - [ ] Service starts cleanly with `uvicorn app.main:app --port 8000 --reload`.
 - [ ] Service returns valid analysis within 50ms when running Tier 1 deterministic rule engine.
+
+---
+
+## 12. Multilingual Voice Interaction Pipeline (STT & TTS)
+
+JanSetu AI extends the complaint workflow with optional, privacy-first multilingual **Speech-to-Text (STT)** and **Text-to-Speech (TTS)** without altering the citizen complaint LangGraph pipeline (`complaint_graph.py`):
+
+### 12.1 Added Voice & Extraction Modules (`ai-service/app/`)
+- `core/voice_config.py` — Environment configuration (`ENABLE_VOICE_STT`, `ENABLE_VOICE_TTS`, `WHISPER_MODEL_SIZE` (`small` active in `.env`/`.env.example`, `base` safe fallback), `WHISPER_DEVICE="cpu"`, `WHISPER_COMPUTE_TYPE="int8"`, `PIPER_AUTO_DOWNLOAD=false`, size/duration caps, optional Bhashini credentials).
+- `services/language_registry.py` — Canonical 23-language capability registry (English + all 22 Eighth Schedule languages) exposing script metadata, RTL flags (`ur`, `ks`, `sd`), Whisper codes, preloaded vs on-demand Piper checkpoints, benchmarked quality status tiers, and explicit limitations.
+- `services/language_detection_service.py` — Script Unicode range classification (`ta`, `kn`, `te`, `ml`, `gu`, `pa`, `or`, `sat`, `mni`, `bn`/`as`, `ur`/`sd`/`ks`) plus Devanagari lexical disambiguation (`mr`, `ne`, `sa`, `mai`, `kok`, `brx`, `doi`, `hi`) used by both `language_node.py` and post-STT script refinement.
+- `services/stt_service.py` — Local `faster-whisper` (`small`/`base`, INT8 CPU) transcription with magic-byte validation (`RIFF/WAVE`, `WebM`, `OGG`, `FLAC`, `MP3`, `M4A`), `64`-byte minimum & `10 MB` maximum checks, `120s` duration enforcement, repetition guards (`no_repeat_ngram_size=3`, `repetition_penalty=1.15`, `beam_size=1` on slow low-resource scripts), logprob confidence scoring, and foreign/script-drift warnings.
+- `services/complaint_extraction_service.py` — Deterministic structured complaint extractor (`POST /api/v1/voice/extract-complaint`) parsing `title`, cleaned `description`, `category`, `categoryCode`, `state`, `district`, and `ward` from English and Indian-language transcripts against `app/data/india_locations.json` without inferring ward numbers or silently overwriting manually entered fields.
+- `services/tts_service.py` — Bounded (`OrderedDict` max `2` cached models) `piper-tts` ONNX synthesis, identifier verbalization (`JS-YYYY-NNNN` spacing via `preprocess_tts_text`), playback speed scaling (`[0.75, 1.5]`), explicit refusal (`422 TTS_VOICE_UNAVAILABLE`, `browserFallbackAllowed: true`) instead of silently substituting English, and temporary WAV cleanup.
+- `services/voice_provider_service.py` — Pluggable router delegating to local Whisper/Piper first and optionally falling back to Digital India **Bhashini** (ULCA / Dhruva REST inference) only when `ENABLE_BHASHINI=true` and valid credentials are configured.
+
+### 12.2 Safety & Non-Auto-Submission Guarantee
+- Voice transcription populates an editable `TranscriptPreview.jsx` and `ExtractedFieldsPreview.jsx` inside the citizen modal; complaints still require explicit human confirmation and submit through `POST /api/v1/complaints`.
+- Raw audio recordings and synthesized WAV outputs are never persisted in MongoDB or logged.
+- Confidential admin data, internal notes, and private tracking tokens are excluded from TTS summaries.

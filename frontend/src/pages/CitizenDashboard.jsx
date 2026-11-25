@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import {
   ShieldCheck,
   PlusCircle,
+  Mic,
   Search,
   Users,
   CheckCircle2,
@@ -16,12 +17,17 @@ import { Button } from '../components/common/Button';
 import { KpiCard } from '../components/dashboard/KpiCard';
 import { CommunityIssueCard } from '../components/dashboard/CommunityIssueCard';
 import { MyReportsSection } from '../components/complaints/MyReportsSection';
+import { VoiceOutput } from '../components/voice/VoiceOutput';
+import { useLanguage } from '../context/LanguageContext';
+import { getVoiceGuideText } from '../data/voiceGuides';
 import { complaintService } from '../services/complaintService';
 import { ISSUE_CATEGORIES } from '../data/mockData';
 
 export const CitizenDashboard = () => {
+  const { selectedLanguage } = useLanguage();
   const {
     onOpenSubmitModal,
+    onOpenVoiceSubmitModal,
     onOpenTrackModal,
     reportsRevision = 0,
     onReportsChanged,
@@ -102,7 +108,7 @@ export const CitizenDashboard = () => {
               </p>
 
               {/* CTAs */}
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 pt-2">
+              <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center lg:justify-start gap-3.5 pt-2">
                 <Button
                   size="lg"
                   variant="primary"
@@ -111,6 +117,16 @@ export const CitizenDashboard = () => {
                   className="w-full sm:w-auto"
                 >
                   Report a Problem
+                </Button>
+
+                <Button
+                  size="lg"
+                  variant="outline"
+                  leftIcon={<Mic className="w-5 h-5 text-[#164DAA] dark:text-blue-400" />}
+                  onClick={onOpenVoiceSubmitModal || onOpenSubmitModal}
+                  className="w-full sm:w-auto border-blue-300 dark:border-blue-700 bg-blue-50/70 dark:bg-blue-950/40 text-[#164DAA] dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/50"
+                >
+                  Voice Complaint
                 </Button>
 
                 <Button
@@ -124,15 +140,25 @@ export const CitizenDashboard = () => {
                 </Button>
               </div>
 
-              {/* Trust signals */}
-              <div className="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span>No login required for citizens</span>
+              {/* Trust signals & Audio Instructions */}
+              <div className="pt-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span>No login required for citizens</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-blue-500" />
+                    <span>Zero public exposure of personal data</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-blue-500" />
-                  <span>Zero public exposure of personal data</span>
+                <div className="flex justify-center lg:justify-start">
+                  <VoiceOutput
+                    label="Listen to Portal Guide"
+                    language={selectedLanguage}
+                    compact
+                    text={getVoiceGuideText('portalGuide', selectedLanguage)}
+                  />
                 </div>
               </div>
             </div>
@@ -343,6 +369,14 @@ export const CitizenDashboard = () => {
             <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8]">
               A 4-step transparent cycle turning individual citizen concerns into amplified community action.
             </p>
+            <div className="pt-2 flex justify-center">
+              <VoiceOutput
+                label="Listen to 4-Step Guide"
+                language={selectedLanguage}
+                compact
+                text={getVoiceGuideText('workflowGuide', selectedLanguage)}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">

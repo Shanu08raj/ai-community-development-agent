@@ -7,12 +7,23 @@ import { ComplaintTrackingModal } from '../components/complaints/ComplaintTracki
 
 export const CitizenLayout = () => {
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [submitInitialMode, setSubmitInitialMode] = useState('standard');
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [initialTrackingData, setInitialTrackingData] = useState(null);
   const [reportsRevision, setReportsRevision] = useState(0);
 
-  const handleOpenSubmit = () => setSubmitModalOpen(true);
-  const handleCloseSubmit = () => setSubmitModalOpen(false);
+  const handleOpenSubmit = () => {
+    setSubmitInitialMode('standard');
+    setSubmitModalOpen(true);
+  };
+  const handleOpenVoiceSubmit = () => {
+    setSubmitInitialMode('voice');
+    setSubmitModalOpen(true);
+  };
+  const handleCloseSubmit = () => {
+    setSubmitModalOpen(false);
+    setSubmitInitialMode('standard');
+  };
   const handleReportsChanged = () => setReportsRevision((n) => n + 1);
 
   const handleOpenTrack = (prefillData = null) => {
@@ -26,6 +37,7 @@ export const CitizenLayout = () => {
 
   const handleSubmissionSuccess = (complaintResult) => {
     setSubmitModalOpen(false);
+    setSubmitInitialMode('standard');
     handleOpenTrack({
       referenceId: complaintResult.referenceId,
       trackingCode: complaintResult.trackingCode,
@@ -43,6 +55,7 @@ export const CitizenLayout = () => {
         <Outlet
           context={{
             onOpenSubmitModal: handleOpenSubmit,
+            onOpenVoiceSubmitModal: handleOpenVoiceSubmit,
             onOpenTrackModal: handleOpenTrack,
             reportsRevision,
             onReportsChanged: handleReportsChanged,
@@ -55,6 +68,7 @@ export const CitizenLayout = () => {
       {/* Complaint Submission Modal */}
       <ComplaintSubmissionModal
         isOpen={submitModalOpen}
+        initialMode={submitInitialMode}
         onClose={handleCloseSubmit}
         onSuccess={handleSubmissionSuccess}
         onReportsChanged={handleReportsChanged}

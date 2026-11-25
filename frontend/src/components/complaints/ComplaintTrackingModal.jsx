@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
+import { VoiceOutput } from '../voice/VoiceOutput';
+import { useLanguage } from '../../context/LanguageContext';
+import { buildTrackingSpeechText } from '../../data/voiceGuides';
 import { complaintService } from '../../services/complaintService';
 import {
   Search,
@@ -15,6 +18,7 @@ import {
 } from 'lucide-react';
 
 export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) => {
+  const { selectedLanguage } = useLanguage();
   const [referenceId, setReferenceId] = useState('');
   const [trackingCode, setTrackingCode] = useState('');
   const [result, setResult] = useState(null);
@@ -118,16 +122,19 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
 
         {/* Error message */}
         {error && (
-          <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
-                Tracking Error
-              </p>
-              <p className="text-xs text-rose-800 dark:text-rose-300 mt-0.5">
-                {error}
-              </p>
+          <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 space-y-2">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+                  Tracking Error
+                </p>
+                <p className="text-xs text-rose-800 dark:text-rose-300 mt-0.5">
+                  {error}
+                </p>
+              </div>
             </div>
+            <VoiceOutput label="Listen to Error" language={selectedLanguage} text={error} compact />
           </div>
         )}
 
@@ -190,6 +197,27 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
                     {result.recommendedAuthority || 'Pending Review'}
                   </span>
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 dark:border-[#263449]">
+                <VoiceOutput
+                  label="Listen to Tracking Updates"
+                  language={selectedLanguage || result.aiAnalysis?.detectedLanguageCode || result.preferredLanguage}
+                  compact
+                  text={buildTrackingSpeechText(
+                    {
+                      id: result.id,
+                      title: result.title,
+                      status: result.status,
+                      priority: result.priority,
+                      area: result.area,
+                      recommendedAuthority: result.recommendedAuthority,
+                      latestStatus: result.timeline?.length ? result.timeline[result.timeline.length - 1].status : '',
+                      latestNote: result.timeline?.length ? result.timeline[result.timeline.length - 1].note : '',
+                    },
+                    selectedLanguage || result.aiAnalysis?.detectedLanguageCode || result.preferredLanguage
+                  )}
+                />
               </div>
             </div>
 

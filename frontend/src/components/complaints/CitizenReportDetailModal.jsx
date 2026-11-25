@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
+import { VoiceOutput } from '../voice/VoiceOutput';
+import { useLanguage } from '../../context/LanguageContext';
+import { buildReportDetailSpeechText } from '../../data/voiceGuides';
 import { complaintService } from '../../services/complaintService';
 import {
   AlertCircle,
@@ -28,6 +31,7 @@ export const CitizenReportDetailModal = ({
   onTrackingCodeUpdated,
   onRemoveReport,
 }) => {
+  const { selectedLanguage } = useLanguage();
   const [detail, setDetail] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorState, setErrorState] = useState(null);
@@ -273,6 +277,32 @@ export const CitizenReportDetailModal = ({
                 </span>
               </p>
             </div>
+
+            <VoiceOutput
+              label="Listen to Complaint Details"
+              language={selectedLanguage || detail.aiAnalysis?.detectedLanguageCode || detail.preferredLanguage}
+              compact
+              text={buildReportDetailSpeechText(
+                {
+                  id: detail.referenceId || detail.id,
+                  title: detail.title,
+                  status: detail.status,
+                  priority: detail.priority,
+                  area: detail.area,
+                  district: detail.district,
+                  state: detail.state,
+                  description: detail.description,
+                  recommendedAuthority: detail.recommendedAuthority,
+                  latestStatus: detail.timeline?.length
+                    ? detail.timeline[detail.timeline.length - 1].status
+                    : '',
+                  latestNote: detail.timeline?.length
+                    ? detail.timeline[detail.timeline.length - 1].note
+                    : '',
+                },
+                selectedLanguage || detail.aiAnalysis?.detectedLanguageCode || detail.preferredLanguage
+              )}
+            />
 
             {/* Lifecycle Timeline */}
             <div className="p-5 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs">

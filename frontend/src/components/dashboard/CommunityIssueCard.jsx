@@ -1,7 +1,12 @@
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Users, MapPin, Building2, Cpu, Calendar } from 'lucide-react';
+import { VoiceOutput } from '../voice/VoiceOutput';
+import { useLanguage } from '../../context/LanguageContext';
+import { buildCommunityIssueSpeechText } from '../../data/voiceGuides';
 
 export const CommunityIssueCard = ({ issue }) => {
+  const { selectedLanguage } = useLanguage();
+  const spokenSummary = buildCommunityIssueSpeechText(issue, selectedLanguage);
   return (
     <div className="p-5 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs hover:shadow-md transition-all flex flex-col justify-between group">
       <div>
@@ -62,16 +67,19 @@ export const CommunityIssueCard = ({ issue }) => {
         </div>
       </div>
 
-      {/* Footer with AI score & date */}
-      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-[#263449] flex items-center justify-between text-[11px] text-slate-500">
-        <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
-          <Cpu className="w-3.5 h-3.5" />
-          AI Cluster Confidence: {issue.aiConfidence}%
-        </span>
-        <span className="flex items-center gap-1">
-          <Calendar className="w-3.5 h-3.5" />
-          {issue.lastUpdated}
-        </span>
+      {/* Footer with AI score, Listen action & date */}
+      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-[#263449] space-y-2">
+        <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+            <Cpu className="w-3.5 h-3.5" />
+            AI Cluster Confidence: {issue.aiConfidence}%
+          </span>
+          <span className="flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5" />
+            {issue.lastUpdated}
+          </span>
+        </div>
+        <VoiceOutput text={spokenSummary} label="Listen to Issue" language={selectedLanguage} compact />
       </div>
     </div>
   );

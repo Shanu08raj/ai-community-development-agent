@@ -63,8 +63,8 @@ describe('Backend Unit Tests', () => {
     expect(() => verifyAdminToken(`${token}tampered`)).toThrow();
   });
 
-  it('4. Zod validators accept all 8 languages and 6 categories, and reject invalid inputs', () => {
-    expect(LANGUAGE_NAMES).toHaveLength(8);
+  it('4. Zod validators accept all 23 supported languages and 6 categories, and reject invalid inputs', () => {
+    expect(LANGUAGE_NAMES).toHaveLength(23);
     expect(CATEGORIES).toHaveLength(6);
 
     for (const lang of LANGUAGE_NAMES) {

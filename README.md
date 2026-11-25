@@ -15,9 +15,10 @@ JanSetu AI is an independent civic-tech community intelligence platform designed
 | **AI Intelligence Service** | `ai-service/` | Python 3.12+, FastAPI, Uvicorn, LangGraph, Rule/Lexicon Engine, Optional Ollama | `8000` |
 
 ### Reference Architecture Documentation
-- [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) — Complete REST & internal AI API specifications.
+- [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) — Complete REST, internal AI, and Voice STT/TTS API specifications.
 - [`docs/DATABASE_DESIGN.md`](docs/DATABASE_DESIGN.md) — MongoDB collections, indexes, and security model.
-- [`docs/AI_WORKFLOW.md`](docs/AI_WORKFLOW.md) — 10-stage LangGraph pipeline, hardware profile, and fallback strategy.
+- [`docs/AI_WORKFLOW.md`](docs/AI_WORKFLOW.md) — 10-stage LangGraph pipeline, hardware profile, voice pipeline, and fallback strategy.
+- [`docs/VOICE_ARCHITECTURE.md`](docs/VOICE_ARCHITECTURE.md) — Multilingual STT/TTS engine selection, CPU benchmarks, 23-language capability matrix, Bhashini integration terms, and privacy controls.
 
 ---
 
@@ -62,6 +63,12 @@ Template: [`ai-service/.env.example`](ai-service/.env.example)
 | `OLLAMA_MODEL` | Lightweight model tag (`qwen2.5:0.5b`) |
 | `BACKEND_URL` | Node.js backend origin (`http://localhost:5000`) |
 | `AI_SERVICE_INTERNAL_SECRET` | Must match `backend/.env` |
+| `ENABLE_VOICE_STT` | `true` to enable local `faster-whisper` Speech-to-Text (`false` to disable safely) |
+| `ENABLE_VOICE_TTS` | `true` to enable local `piper-tts` Text-to-Speech (`false` falls back to matching browser voice / silent text) |
+| `WHISPER_MODEL_SIZE` | `small` (configured CPU INT8 checkpoint, ~461 MB `model.bin` for Devanagari Hindi/Marathi & Tamil; falls back cleanly to `base` ~138 MB if absent) |
+| `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | `cpu` / `int8` (optimized for 8 GB RAM laptops with zero VRAM usage) |
+| `PIPER_AUTO_DOWNLOAD` | `false` (keeps only the 4 preloaded voices: `en`, `hi`, `mr`, `te`; set `true` to cache `bn`/`ml`/`ne`/`ur` on demand) |
+| `ENABLE_BHASHINI` | `false` (optional Bhashini Dhruva/ULCA cloud fallback; requires `BHASHINI_USER_ID`, `BHASHINI_ULCA_API_KEY`, `BHASHINI_INFERENCE_KEY`) |
 
 ### 3. Frontend (`frontend/.env`)
 Template: [`frontend/.env.example`](frontend/.env.example)
@@ -153,3 +160,9 @@ npm run lint; npm test; npm run build
    - On Windows PowerShell 5.1, use `;` rather than `&&` between sequential commands.
 4. **Low VRAM Laptops (e.g., NVIDIA MX250 2 GB):**
    - Keep `ENABLE_OLLAMA=false` in `ai-service/.env` to use the zero-VRAM deterministic rule-based and multilingual lexicon engine (`< 25ms` per complaint).
+   - Keep `WHISPER_DEVICE=cpu`, `WHISPER_COMPUTE_TYPE=int8`, `WHISPER_MODEL_SIZE=small` (or `base` for lowest ~597 MB combined RAM), and `PIPER_AUTO_DOWNLOAD=false` so voice STT/TTS runs in system RAM without consuming GPU VRAM.
+5. **Multilingual Voice, Structured Field Extraction & Playback:**
+   - Speaking a complaint transcribes speech into an editable preview (with language correction & **Re-transcribe**) and runs `POST /api/v1/voice/extract-complaint` to populate editable Title, Category, State, District, Ward, and Description previews before the user manually confirms and submits.
+   - Spoken guides and confirmation/tracking summaries synchronize automatically with the navbar `LanguageSelector` (`en`, `hi`, `mr`, `te` via local Piper TTS; exact-match browser voices where installed; honest availability notices when a language lacks a verified voice without silently substituting English).
+   - Ensure browser microphone permission is granted on `http://localhost:5173` (HTTPS is required on remote deployments for `MediaRecorder`).
+   - If you prefer text-only operation or run in minimal RAM environments, set `ENABLE_VOICE_STT=false` and `ENABLE_VOICE_TTS=false` in `ai-service/.env` — typed submission and complaint tracking continue unaffected.

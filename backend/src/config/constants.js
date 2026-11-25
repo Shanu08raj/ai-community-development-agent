@@ -60,14 +60,29 @@ export const AUDIT_ACTIONS = [
 ];
 
 export const SUPPORTED_LANGUAGES = [
-  { code: 'en', name: 'English', native: 'English', implementation: 'implemented' },
-  { code: 'hi', name: 'Hindi', native: 'हिन्दी', implementation: 'implemented' },
-  { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', implementation: 'planned_fallback' },
-  { code: 'ta', name: 'Tamil', native: 'தமிழ்', implementation: 'implemented' },
-  { code: 'te', name: 'Telugu', native: 'తెలుగు', implementation: 'planned_fallback' },
-  { code: 'mr', name: 'Marathi', native: 'मराठी', implementation: 'implemented' },
-  { code: 'as', name: 'Assamese', native: 'অসমীয়া', implementation: 'planned_fallback' },
-  { code: 'mni', name: 'Manipuri (Meitei)', native: 'মৈতৈলোন্', implementation: 'planned_fallback' },
+  { code: 'en', name: 'English', native: 'English', rtl: false, implementation: 'implemented' },
+  { code: 'hi', name: 'Hindi', native: 'हिन्दी', rtl: false, implementation: 'implemented' },
+  { code: 'mr', name: 'Marathi', native: 'मराठी', rtl: false, implementation: 'implemented' },
+  { code: 'ta', name: 'Tamil', native: 'தமிழ்', rtl: false, implementation: 'implemented' },
+  { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ', rtl: false, implementation: 'planned_fallback' },
+  { code: 'te', name: 'Telugu', native: 'తెలుగు', rtl: false, implementation: 'planned_fallback' },
+  { code: 'as', name: 'Assamese', native: 'অসমীয়া', rtl: false, implementation: 'planned_fallback' },
+  { code: 'mni', name: 'Manipuri (Meitei)', native: 'মৈতৈলোন্', rtl: false, implementation: 'planned_fallback' },
+  { code: 'bn', name: 'Bengali', native: 'বাংলা', rtl: false, implementation: 'planned_fallback' },
+  { code: 'brx', name: 'Bodo', native: 'बड़ो', rtl: false, implementation: 'planned_fallback' },
+  { code: 'doi', name: 'Dogri', native: 'डोगरी', rtl: false, implementation: 'planned_fallback' },
+  { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી', rtl: false, implementation: 'planned_fallback' },
+  { code: 'ks', name: 'Kashmiri', native: 'کٲشُر / कॉशुर', rtl: true, implementation: 'planned_fallback' },
+  { code: 'kok', name: 'Konkani', native: 'कोंकणी', rtl: false, implementation: 'planned_fallback' },
+  { code: 'mai', name: 'Maithili', native: 'मैथिली', rtl: false, implementation: 'planned_fallback' },
+  { code: 'ml', name: 'Malayalam', native: 'മലയാളം', rtl: false, implementation: 'planned_fallback' },
+  { code: 'ne', name: 'Nepali', native: 'नेपाली', rtl: false, implementation: 'planned_fallback' },
+  { code: 'or', name: 'Odia', native: 'ଓଡ଼ିଆ', rtl: false, implementation: 'planned_fallback' },
+  { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ', rtl: false, implementation: 'planned_fallback' },
+  { code: 'sa', name: 'Sanskrit', native: 'संस्कृतम्', rtl: false, implementation: 'planned_fallback' },
+  { code: 'sat', name: 'Santali', native: 'ᱥᱟᱱᱛᱟᱲᱤ', rtl: false, implementation: 'planned_fallback' },
+  { code: 'sd', name: 'Sindhi', native: 'سنڌي / सिन्धी', rtl: true, implementation: 'planned_fallback' },
+  { code: 'ur', name: 'Urdu', native: 'اردو', rtl: true, implementation: 'planned_fallback' },
 ];
 
 export const LANGUAGE_NAMES = SUPPORTED_LANGUAGES.map((l) => l.name);

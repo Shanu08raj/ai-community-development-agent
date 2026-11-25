@@ -1,3 +1,5 @@
+from app.services.language_registry import LANGUAGE_CAPABILITIES
+
 CATEGORIES = [
     "Water Supply",
     "Roads and Infrastructure",
@@ -12,14 +14,13 @@ AI_CATEGORIES = CATEGORIES + ["Out of Scope"]
 PRIORITIES = ["High", "Medium", "Low"]
 
 SUPPORTED_LANGUAGES = {
-    "en": {"name": "English", "mode": "implemented_lexicon"},
-    "hi": {"name": "Hindi", "mode": "implemented_lexicon"},
-    "mr": {"name": "Marathi", "mode": "implemented_lexicon"},
-    "ta": {"name": "Tamil", "mode": "implemented_lexicon"},
-    "kn": {"name": "Kannada", "mode": "script_heuristic_fallback"},
-    "te": {"name": "Telugu", "mode": "script_heuristic_fallback"},
-    "as": {"name": "Assamese", "mode": "script_heuristic_fallback"},
-    "mni": {"name": "Manipuri (Meitei)", "mode": "script_heuristic_fallback"},
+    entry["code"]: {
+        "name": entry["name"],
+        "native": entry["nativeName"],
+        "mode": entry["textAnalysisMode"],
+        "rtl": entry["rtl"],
+    }
+    for entry in LANGUAGE_CAPABILITIES
 }
 
 LANGUAGE_CODES = list(SUPPORTED_LANGUAGES.keys()) + ["und"]
