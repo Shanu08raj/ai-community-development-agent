@@ -1,8 +1,33 @@
+import { useEffect, useState } from 'react';
 import { complaintService } from '../../services/complaintService';
-import { ScrollText, User } from 'lucide-react';
+import { ScrollText, User, AlertCircle } from 'lucide-react';
 
-export const AuditLogsView = () => {
-  const logs = complaintService.getAuditLogs();
+export const AuditLogsView = ({ refreshNonce = 0, onAuthError }) => {
+  const [logs, setLogs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    async function loadLogs() {
+      setIsLoading(true);
+      setError('');
+      try {
+        const res = await complaintService.getAuditLogs({ limit: 30 });
+        if (active) setLogs(res.items || []);
+      } catch (err) {
+        if (!active) return;
+        if (onAuthError && onAuthError(err)) return;
+        setError(err.message || 'Unable to load administrative audit logs.');
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+    loadLogs();
+    return () => {
+      active = false;
+    };
+  }, [refreshNonce, onAuthError]);
 
   return (
     <div className="bg-white dark:bg-[#151F32] rounded-2xl border border-slate-200 dark:border-[#263449] shadow-xs overflow-hidden transition-colors">
@@ -12,9 +37,16 @@ export const AuditLogsView = () => {
           Administrative Audit Trail
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Immutable demo record of status alterations, supervisory notes, and cluster dispatches
+          Immutable MongoDB record of status alterations, supervisory notes, and cluster triage
         </p>
       </div>
+
+      {error && (
+        <div className="m-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
@@ -30,7 +62,13 @@ export const AuditLogsView = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {logs && logs.length > 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan={7} className="py-8 text-center text-slate-400">
+                  Loading immutable audit logs...
+                </td>
+              </tr>
+            ) : logs && logs.length > 0 ? (
               logs.map((log) => (
                 <tr
                   key={log.id}

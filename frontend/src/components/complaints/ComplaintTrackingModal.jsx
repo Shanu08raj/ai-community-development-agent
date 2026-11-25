@@ -8,10 +8,10 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Sparkles,
   MapPin,
   Calendar,
   Building2,
+  PhoneCall,
 } from 'lucide-react';
 
 export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) => {
@@ -21,22 +21,20 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
   const [error, setError] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
-  const handleLookup = useCallback((ref = referenceId, code = trackingCode) => {
+  const handleLookup = useCallback(async (ref = referenceId, code = trackingCode) => {
     setError('');
     setIsSearching(true);
-
-    const timer = setTimeout(() => {
-      const response = complaintService.trackComplaint(ref, code);
-      setIsSearching(false);
+    try {
+      const response = await complaintService.trackComplaint(ref, code);
       if (response.success) {
         setResult(response.complaint);
       } else {
         setResult(null);
         setError(response.error);
       }
-    }, 300);
-
-    return () => clearTimeout(timer);
+    } finally {
+      setIsSearching(false);
+    }
   }, [referenceId, trackingCode]);
 
   useEffect(() => {
@@ -52,17 +50,12 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
       }, 0);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [initialData, handleLookup]);
 
-  const handleFillDemoSample = () => {
-    const sampleRef = 'JS-2026-8901';
-    const sampleCode = 'TRACK-901A';
-    setReferenceId(sampleRef);
-    setTrackingCode(sampleCode);
-    handleLookup(sampleRef, sampleCode);
-  };
-
   const handleClose = () => {
+    setReferenceId('');
+    setTrackingCode('');
     setResult(null);
     setError('');
     onClose();
@@ -73,7 +66,7 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
       isOpen={isOpen}
       onClose={handleClose}
       title="Track Complaint Status"
-      subtitle="Enter your Reference ID and confidential Tracking Code to inspect live progress."
+      subtitle="Enter both your Reference ID and confidential Tracking Code to inspect live progress."
       maxWidth="max-w-3xl"
     >
       <div className="space-y-6">
@@ -100,21 +93,16 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
                 type="text"
                 value={trackingCode}
                 onChange={(e) => setTrackingCode(e.target.value)}
-                placeholder="e.g. TRACK-901A"
+                placeholder="e.g. TRACK-XXXXXX"
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-[#263449] bg-white dark:bg-[#151F32] text-slate-800 dark:text-slate-100 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleFillDemoSample}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-center"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Use Sample Demo Credentials (JS-2026-8901)
-            </button>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              Dual-credential verification protects citizen privacy.
+            </span>
 
             <Button
               variant="primary"
@@ -146,6 +134,16 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
         {/* Results section */}
         {result && (
           <div className="space-y-6 animate-in fade-in">
+            {result.aiAnalysis?.emergencyGuidance && (
+              <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 flex items-start gap-3 text-xs text-rose-900 dark:text-rose-200">
+                <PhoneCall className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Emergency Notice</p>
+                  <p className="mt-0.5">{result.aiAnalysis.emergencyGuidance}</p>
+                </div>
+              </div>
+            )}
+
             {/* Header summary card */}
             <div className="p-5 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-[#263449] pb-3">
@@ -189,7 +187,7 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
                   <span className="text-[11px] text-slate-400 block font-medium">Recommended Authority</span>
                   <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1 truncate">
                     <Building2 className="w-3.5 h-3.5 text-emerald-500" />
-                    {result.recommendedAuthority}
+                    {result.recommendedAuthority || 'Pending Review'}
                   </span>
                 </div>
               </div>
@@ -208,7 +206,6 @@ export const ComplaintTrackingModal = ({ isOpen, onClose, initialData = null }) 
                     const isLast = idx === result.timeline.length - 1;
                     return (
                       <div key={idx} className="relative group">
-                        {/* Dot indicator */}
                         <div
                           className={`absolute -left-6 sm:-left-8 top-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
                             isLast

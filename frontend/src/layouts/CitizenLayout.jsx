@@ -9,9 +9,11 @@ export const CitizenLayout = () => {
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [trackModalOpen, setTrackModalOpen] = useState(false);
   const [initialTrackingData, setInitialTrackingData] = useState(null);
+  const [reportsRevision, setReportsRevision] = useState(0);
 
   const handleOpenSubmit = () => setSubmitModalOpen(true);
   const handleCloseSubmit = () => setSubmitModalOpen(false);
+  const handleReportsChanged = () => setReportsRevision((n) => n + 1);
 
   const handleOpenTrack = (prefillData = null) => {
     setInitialTrackingData(prefillData);
@@ -24,7 +26,6 @@ export const CitizenLayout = () => {
 
   const handleSubmissionSuccess = (complaintResult) => {
     setSubmitModalOpen(false);
-    // Automatically offer to view the complaint in tracking modal
     handleOpenTrack({
       referenceId: complaintResult.referenceId,
       trackingCode: complaintResult.trackingCode,
@@ -43,6 +44,8 @@ export const CitizenLayout = () => {
           context={{
             onOpenSubmitModal: handleOpenSubmit,
             onOpenTrackModal: handleOpenTrack,
+            reportsRevision,
+            onReportsChanged: handleReportsChanged,
           }}
         />
       </main>
@@ -54,6 +57,7 @@ export const CitizenLayout = () => {
         isOpen={submitModalOpen}
         onClose={handleCloseSubmit}
         onSuccess={handleSubmissionSuccess}
+        onReportsChanged={handleReportsChanged}
       />
 
       {/* Complaint Tracking Modal */}

@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
+import { SearchableSelect } from '../common/SearchableSelect';
+import { INDIA_LOCATIONS, getDistrictsForState } from '../../data/indiaLocations';
 import { complaintService } from '../../services/complaintService';
+import { myReportsService } from '../../services/myReportsService';
+import { downloadComplaintReceipt } from '../../utils/receiptGenerator';
 import { useToast } from '../../context/ToastContext';
 import {
   UploadCloud,
@@ -10,6 +14,9 @@ import {
   AlertCircle,
   Info,
   ShieldAlert,
+  PhoneCall,
+  Download,
+  BookmarkCheck,
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -21,15 +28,37 @@ const CATEGORIES = [
   'Other',
 ];
 
-export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
+const LANGUAGES = [
+  { value: 'English', label: 'English' },
+  { value: 'Hindi', label: 'हिन्दी (Hindi)' },
+  { value: 'Kannada', label: 'ಕನ್ನಡ (Kannada)' },
+  { value: 'Tamil', label: 'தமிழ் (Tamil)' },
+  { value: 'Telugu', label: 'తెలుగు (Telugu)' },
+  { value: 'Marathi', label: 'मराठी (Marathi)' },
+  { value: 'Assamese', label: 'অসমীয়া (Assamese)' },
+  { value: 'Manipuri (Meitei)', label: 'মৈতৈলোন্ (Manipuri / Meitei)' },
+];
+
+const STATE_OPTIONS = INDIA_LOCATIONS.map((loc) => ({
+  value: loc.name,
+  label: loc.name,
+  meta: loc.type === 'Union Territory' ? 'UT' : 'State',
+}));
+
+export const ComplaintSubmissionModal = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  onReportsChanged,
+}) => {
   const { addToast } = useToast();
 
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     category: 'Water Supply',
-    state: 'Maharashtra',
-    district: 'Pune',
+    state: '',
+    district: '',
     area: '',
     preferredLanguage: 'English',
     contactInfo: '',
@@ -37,23 +66,27 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedData, setSubmittedData] = useState(null);
+  const [rememberOnDevice, setRememberOnDevice] = useState(true);
 
   const resetForm = () => {
     setFormData({
       title: '',
       description: '',
       category: 'Water Supply',
-      state: 'Maharashtra',
-      district: 'Pune',
+      state: '',
+      district: '',
       area: '',
       preferredLanguage: 'English',
       contactInfo: '',
     });
     setSelectedFile(null);
     setErrors({});
+    setSubmitError('');
     setSubmittedData(null);
+    setRememberOnDevice(true);
   };
 
   const handleClose = () => {
@@ -83,22 +116,100 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (isSubmitting || !validate()) return;
 
+    setSubmitError('');
     setIsSubmitting(true);
-    setTimeout(() => {
-      const result = complaintService.submitComplaint(formData);
+    try {
+      const result = await complaintService.submitComplaint(formData);
+      const snapshot = {
+        title: result.complaint?.title || formData.title.trim(),
+        category: result.complaint?.category || formData.category,
+        area: result.complaint?.area || formData.area.trim(),
+        state: result.complaint?.state || formData.state.trim() || 'Maharashtra',
+        district: result.complaint?.district || formData.district.trim() || 'Pune',
+        submittedDate:
+          result.complaint?.submittedDate || new Date().toISOString().split('T')[0],
+        status: result.complaint?.status || 'Submitted',
+        priority:
+          result.complaint?.priority ||
+          result.aiAnalysis?.detectedPriority ||
+          'Medium',
+      };
+
+      // Automatically save locally by default after confirmed backend 201 creation
+      setRememberOnDevice(true);
+      if (result.referenceId && result.trackingCode) {
+        myReportsService.saveReport({
+          referenceId: result.referenceId,
+          trackingCode: result.trackingCode,
+          ...snapshot,
+        });
+        if (onReportsChanged) {
+          onReportsChanged();
+        }
+      }
+
+      setSubmittedData({
+        ...result,
+        snapshot,
+      });
+      addToast('Community report submitted and queued for review!', 'success');
+    } catch (err) {
+      const msg = err.message || 'Unable to submit complaint. Please verify inputs and try again.';
+      setSubmitError(msg);
+      addToast(msg, 'error');
+    } finally {
       setIsSubmitting(false);
-      setSubmittedData(result);
-      addToast('Community report logged successfully in demo session!', 'success');
-    }, 600);
+    }
   };
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
     addToast(`${label} copied to clipboard!`, 'info');
+  };
+
+  const handleToggleRemember = (checked) => {
+    if (!submittedData?.referenceId || !submittedData?.trackingCode) return;
+
+    setRememberOnDevice(checked);
+    if (checked) {
+      myReportsService.saveReport({
+        referenceId: submittedData.referenceId,
+        trackingCode: submittedData.trackingCode,
+        ...submittedData.snapshot,
+      });
+      addToast('Saved report locally to My Reports on this device.', 'success');
+    } else {
+      myReportsService.removeReport(submittedData.referenceId);
+      addToast('Removed saved report credentials from this device.', 'info');
+    }
+
+    if (onReportsChanged) {
+      onReportsChanged();
+    }
+  };
+
+  const handleDownloadReceipt = () => {
+    if (!submittedData?.referenceId || !submittedData?.trackingCode) return;
+    const { filename } = downloadComplaintReceipt({
+      referenceId: submittedData.referenceId,
+      trackingCode: submittedData.trackingCode,
+      ...submittedData.snapshot,
+    });
+    addToast(`Downloaded confidential receipt (${filename}).`, 'success');
+  };
+
+  const districtOptions = getDistrictsForState(formData.state);
+
+  const handleStateChange = (nextState) => {
+    setFormData((prev) => ({
+      ...prev,
+      state: nextState,
+      district: '',
+    }));
   };
 
   return (
@@ -108,25 +219,45 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
       title={submittedData ? 'Report Submitted Successfully' : 'Report a Community Problem'}
       subtitle={
         submittedData
-          ? 'Save your tracking credentials to check community progress.'
-          : 'AI will analyze your report and cluster it with similar neighborhood issues.'
+          ? 'Save your tracking credentials now. The secret tracking code is shown only once.'
+          : 'AI will analyze your report and suggest relevant clustering and local authorities for human review.'
       }
       maxWidth="max-w-2xl"
     >
       {submittedData ? (
         /* SUCCESS SCREEN */
-        <div className="space-y-6 py-2">
+        <div className="space-y-5 py-2">
           <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-start gap-3">
             <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             <div>
               <h4 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
-                Complaint Registered Locally (Demo Mode)
+                Complaint Registered
               </h4>
               <p className="text-xs text-emerald-800 dark:text-emerald-300 mt-0.5 leading-relaxed">
-                Your report has been saved to your browser demo storage and queued for AI clustering. No public account is needed to track its progress.
+                {submittedData.message ||
+                  'Your report has been persisted and analyzed for civic clustering. No account is needed to track its progress.'}
               </p>
             </div>
           </div>
+
+          {submittedData.aiAnalysis?.emergencyGuidance && (
+            <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 flex items-start gap-3 text-xs text-rose-900 dark:text-rose-200">
+              <PhoneCall className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">Emergency Guidance (Dial 112)</p>
+                <p>{submittedData.aiAnalysis.emergencyGuidance}</p>
+              </div>
+            </div>
+          )}
+
+          {submittedData.aiAnalysis?.isOutOfScope && !submittedData.aiAnalysis?.emergencyGuidance && (
+            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Scope Notice:</strong> {submittedData.aiAnalysis.outOfScopeReason}
+              </span>
+            </div>
+          )}
 
           {/* Credentials Display */}
           <div className="bg-slate-50 dark:bg-[#0B1120] rounded-xl p-5 border border-slate-200 dark:border-[#263449] space-y-4">
@@ -145,7 +276,7 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
                 leftIcon={<Copy className="w-3.5 h-3.5" />}
                 onClick={() => copyToClipboard(submittedData.referenceId, 'Reference ID')}
               >
-                Copy ID
+                Copy Reference ID
               </Button>
             </div>
 
@@ -158,7 +289,7 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
                   {submittedData.trackingCode}
                 </span>
                 <span className="text-[10px] text-slate-500 block">
-                  Keep this confidential; required for status tracking.
+                  Treat as a confidential bearer secret — it cannot be recovered from the server later.
                 </span>
               </div>
               <Button
@@ -167,16 +298,56 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
                 leftIcon={<Copy className="w-3.5 h-3.5" />}
                 onClick={() => copyToClipboard(submittedData.trackingCode, 'Tracking Code')}
               >
-                Copy Code
+                Copy Tracking Code
               </Button>
             </div>
+
+            {/* Download Receipt CTA */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+              <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                Download an offline receipt containing both credentials and confidentiality warnings.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                onClick={handleDownloadReceipt}
+                className="shrink-0"
+              >
+                Download Receipt
+              </Button>
+            </div>
+          </div>
+
+          {/* Explicit Opt-In Device Memory Toggle */}
+          <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/70 space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberOnDevice}
+                onChange={(e) => handleToggleRemember(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <div className="space-y-1">
+                <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <BookmarkCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  Remember this report on this device
+                </span>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Saves your Reference ID and Private Tracking Code locally in browser storage so this complaint appears in <strong>My Reports</strong> across page refreshes and browser restarts. Uncheck if you do not want to save this report locally.
+                </p>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                  <strong>Security Notice:</strong> Local browser storage is not encrypted and may be accessible to other users or scripts in this browser. Saving credentials on shared or public devices is <strong>not recommended</strong> — uncheck this option before finishing.
+                </p>
+              </div>
+            </label>
           </div>
 
           {/* Civic Notice */}
           <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300">
             <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
             <span>
-              <strong>Demo Disclaimer:</strong> JanSetu AI is an independent community intelligence system. This complaint is not officially forwarded to a government department.
+              <strong>Advisory Disclaimer:</strong> JanSetu AI is an independent community intelligence system. This submission is not automatically forwarded to a government portal without human administrator verification.
             </span>
           </div>
 
@@ -188,7 +359,9 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
             <Button
               variant="primary"
               onClick={() => {
-                if (onSuccess) onSuccess(submittedData);
+                const payload = submittedData;
+                resetForm();
+                if (onSuccess && payload) onSuccess(payload);
               }}
             >
               Track This Complaint Now
@@ -198,6 +371,13 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
       ) : (
         /* FORM SCREEN */
         <form onSubmit={handleSubmit} className="space-y-4">
+          {submitError && (
+            <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
+
           {/* Title */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">
@@ -242,7 +422,7 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                Area / Ward / Neighborhood <span className="text-rose-500">*</span>
+                Area / Ward <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
@@ -265,28 +445,33 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
 
           {/* State & District */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                State
-              </label>
-              <input
-                type="text"
-                value={formData.state}
-                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-[#263449] bg-white dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                District / City
-              </label>
-              <input
-                type="text"
-                value={formData.district}
-                onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-[#263449] bg-white dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            <SearchableSelect
+              id="complaint-state"
+              label="State"
+              value={formData.state}
+              onChange={handleStateChange}
+              options={STATE_OPTIONS}
+              placeholder="Select State or Union Territory"
+              searchPlaceholder="Search state or union territory..."
+              emptyMessage="No matching state or UT found."
+            />
+            <SearchableSelect
+              id="complaint-district"
+              label="District / City"
+              value={formData.district}
+              onChange={(nextDistrict) =>
+                setFormData((prev) => ({ ...prev, district: nextDistrict }))
+              }
+              options={districtOptions}
+              disabled={!formData.state}
+              placeholder={
+                formData.state
+                  ? 'Select District / City'
+                  : 'Select a State / UT first'
+              }
+              searchPlaceholder="Search district or city..."
+              emptyMessage="No matching district found."
+            />
           </div>
 
           {/* Description */}
@@ -323,16 +508,17 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
                 onChange={(e) => setFormData({ ...formData, preferredLanguage: e.target.value })}
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 dark:border-[#263449] bg-white dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="English">English</option>
-                <option value="Hindi">हिन्दी (Hindi)</option>
-                <option value="Marathi">मराठी (Marathi)</option>
-                <option value="Tamil">தமிழ் (Tamil)</option>
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.value} value={lang.value}>
+                    {lang.label}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                Contact Info <span className="text-slate-400 font-normal">(Optional demo contact)</span>
+                Contact Info <span className="text-slate-400 font-normal">(Optional private contact)</span>
               </label>
               <input
                 type="text"
@@ -376,7 +562,7 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
                   )}
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  PNG, JPG up to 10MB (Sample image attachment)
+                  PNG, JPG up to 10MB (Optional preview attachment)
                 </span>
               </label>
             </div>
@@ -386,7 +572,7 @@ export const ComplaintSubmissionModal = ({ isOpen, onClose, onSuccess }) => {
           <div className="p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 flex items-start gap-2 text-xs text-blue-800 dark:text-blue-300">
             <Info className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
             <span>
-              Your identity remains private. Only aggregated neighborhood issue details and general ward locations are made visible to the community.
+              Your identity remains private. Only aggregated neighborhood issue details and general ward locations are visible to the public community.
             </span>
           </div>
 

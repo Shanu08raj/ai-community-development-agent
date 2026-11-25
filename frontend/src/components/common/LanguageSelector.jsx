@@ -4,9 +4,12 @@ import { Globe, ChevronDown, Check } from 'lucide-react';
 const LANGUAGES = [
   { code: 'en', name: 'English', native: 'English' },
   { code: 'hi', name: 'Hindi', native: 'हिन्दी' },
-  { code: 'mr', name: 'Marathi', native: 'मराठी' },
+  { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
   { code: 'ta', name: 'Tamil', native: 'தமிழ்' },
-  { code: 'bn', name: 'Bengali', native: 'বাংলা' },
+  { code: 'te', name: 'Telugu', native: 'తెలుగు' },
+  { code: 'mr', name: 'Marathi', native: 'मराठी' },
+  { code: 'as', name: 'Assamese', native: 'অসমীয়া' },
+  { code: 'mni', name: 'Manipuri (Meitei)', native: 'মৈতৈলোন্' },
 ];
 
 export const LanguageSelector = ({ className = '' }) => {

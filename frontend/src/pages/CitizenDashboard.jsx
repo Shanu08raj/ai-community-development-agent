@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -10,27 +10,69 @@ import {
   Sparkles,
   TrendingUp,
   Cpu,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { KpiCard } from '../components/dashboard/KpiCard';
 import { CommunityIssueCard } from '../components/dashboard/CommunityIssueCard';
+import { MyReportsSection } from '../components/complaints/MyReportsSection';
 import { complaintService } from '../services/complaintService';
-import {
-  COMMUNITY_STATS,
-  ISSUE_CATEGORIES,
-} from '../data/mockData';
+import { ISSUE_CATEGORIES } from '../data/mockData';
 
 export const CitizenDashboard = () => {
-  const { onOpenSubmitModal, onOpenTrackModal } = useOutletContext();
+  const {
+    onOpenSubmitModal,
+    onOpenTrackModal,
+    reportsRevision = 0,
+    onReportsChanged,
+  } = useOutletContext();
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [stats, setStats] = useState({
+    totalReports: 0,
+    recurringIssues: 0,
+    inProgress: 0,
+    reportedResolutions: 0,
+    growthRates: {
+      totalReports: 'Loading...',
+      recurringIssues: 'Loading...',
+      inProgress: 'Loading...',
+      reportedResolutions: 'Loading...',
+    },
+  });
+  const [issues, setIssues] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Load community issues from service
-  const allIssues = complaintService.getCommunityIssues();
+  useEffect(() => {
+    let active = true;
+    async function loadDashboard() {
+      setIsLoading(true);
+      setError('');
+      try {
+        const [statsData, issuesRes] = await Promise.all([
+          complaintService.getPublicStats(),
+          complaintService.getPublicCommunityIssues({
+            category: selectedCategory === 'All' ? undefined : selectedCategory,
+            limit: 12,
+          }),
+        ]);
+        if (!active) return;
+        if (statsData) setStats(statsData);
+        setIssues(issuesRes.items || []);
+      } catch (err) {
+        if (!active) return;
+        setError(err.message || 'Unable to load community intelligence data from backend.');
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    }
+    loadDashboard();
+    return () => {
+      active = false;
+    };
+  }, [selectedCategory]);
 
-  const filteredIssues =
-    selectedCategory === 'All'
-      ? allIssues
-      : allIssues.filter((item) => item.category === selectedCategory);
+  const featuredIssue = issues[0] || null;
 
   return (
     <div className="space-y-16 pb-20">
@@ -95,7 +137,7 @@ export const CitizenDashboard = () => {
               </div>
             </div>
 
-            {/* Right Abstract Civic Graphic / Card preview */}
+            {/* Right Live Cluster Highlight Card */}
             <div className="lg:col-span-5">
               <div className="relative p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-blue-50 to-slate-50 dark:from-[#111827] dark:to-[#151F32] border border-blue-100 dark:border-[#263449] shadow-xl space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
@@ -105,22 +147,24 @@ export const CitizenDashboard = () => {
                     </div>
                     <div>
                       <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                        Community Issue Cluster #101
+                        {featuredIssue ? `Community Issue Cluster ${featuredIssue.id}` : 'Community Issue Intelligence'}
                       </h3>
                       <p className="text-[10px] text-slate-500">Live AI aggregation feed</p>
                     </div>
                   </div>
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                    High Priority
+                    {featuredIssue ? `${featuredIssue.priority} Priority` : 'Active'}
                   </span>
                 </div>
 
                 <div className="space-y-2">
                   <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    Severe low water pressure and shortage in Ward 12
+                    {featuredIssue ? featuredIssue.title : 'Aggregating community reports in real time'}
                   </h4>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    AI grouped 35 individual citizen complaints in North Zone into one consolidated action group.
+                    {featuredIssue
+                      ? featuredIssue.summary
+                      : 'Submit a civic issue to see localized AI clustering and advisory authority mapping.'}
                   </p>
                 </div>
 
@@ -128,21 +172,23 @@ export const CitizenDashboard = () => {
                   <div className="p-2.5 rounded-xl bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-800">
                     <span className="text-slate-400 block font-medium">Clustered Reports</span>
                     <span className="text-base font-extrabold text-blue-600 dark:text-blue-400">
-                      35 Citizens
+                      {featuredIssue ? `${featuredIssue.relatedReportsCount} Citizens` : `${stats.totalReports} Total`}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-800">
                     <span className="text-slate-400 block font-medium">AI Match Confidence</span>
                     <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
-                      96%
+                      {featuredIssue ? `${featuredIssue.aiConfidence}%` : 'Active'}
                     </span>
                   </div>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-blue-600/10 dark:bg-blue-900/30 text-[11px] text-blue-700 dark:text-blue-300 flex items-center justify-between">
-                  <span>Target: Local Water Supply Board</span>
-                  <span className="font-semibold flex items-center gap-1">
-                    In Progress <Clock className="w-3 h-3" />
+                  <span className="truncate max-w-[200px]">
+                    Advisory: {featuredIssue?.recommendedAuthority || 'Municipal Civic Authority'}
+                  </span>
+                  <span className="font-semibold flex items-center gap-1 shrink-0">
+                    {featuredIssue?.status || 'Submitted'} <Clock className="w-3 h-3" />
                   </span>
                 </div>
               </div>
@@ -158,47 +204,55 @@ export const CitizenDashboard = () => {
             Live Community Statistics
           </h2>
           <p className="text-xs sm:text-sm text-[#64748B] dark:text-[#94A3B8]">
-            Transparency in numbers across municipal wards (Demonstration data)
+            Transparency in numbers across municipal wards
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <KpiCard
             title="Total Community Reports"
-            value={COMMUNITY_STATS.totalReports.toLocaleString()}
+            value={Number(stats.totalReports || 0).toLocaleString()}
             subtitle="Citizen reports filed locally"
-            change={COMMUNITY_STATS.growthRates.totalReports}
+            change={stats.growthRates?.totalReports}
             icon={TrendingUp}
             colorScheme="blue"
           />
           <KpiCard
             title="Recurring Community Issues"
-            value={COMMUNITY_STATS.recurringIssues}
+            value={stats.recurringIssues}
             subtitle="AI clusters affecting multiple citizens"
-            change={COMMUNITY_STATS.growthRates.recurringIssues}
+            change={stats.growthRates?.recurringIssues}
             icon={Users}
             colorScheme="amber"
           />
           <KpiCard
             title="Issues In Progress"
-            value={COMMUNITY_STATS.inProgress}
+            value={stats.inProgress}
             subtitle="Currently undergoing civic attention"
-            change={COMMUNITY_STATS.growthRates.inProgress}
+            change={stats.growthRates?.inProgress}
             icon={Clock}
             colorScheme="indigo"
           />
           <KpiCard
             title="Reported Resolutions"
-            value={COMMUNITY_STATS.reportedResolutions}
+            value={stats.reportedResolutions}
             subtitle="Problems reported resolved"
-            change={COMMUNITY_STATS.growthRates.reportedResolutions}
+            change={stats.growthRates?.reportedResolutions}
             icon={CheckCircle2}
             colorScheme="emerald"
           />
         </div>
       </section>
 
-      {/* 3. COMMUNITY ISSUES (Key Differentiating Feature) */}
+      {/* 3. MY REPORTS (Opt-In Saved Local Reports) */}
+      <MyReportsSection
+        reportsRevision={reportsRevision}
+        onReportsChanged={onReportsChanged}
+        onOpenSubmitModal={onOpenSubmitModal}
+        onOpenTrackModal={onOpenTrackModal}
+      />
+
+      {/* 4. COMMUNITY ISSUES (Key Differentiating Feature) */}
       <section id="community-issues" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
           <div>
@@ -243,12 +297,34 @@ export const CitizenDashboard = () => {
           ))}
         </div>
 
+        {error && (
+          <div className="mt-4 p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-center gap-2 text-xs text-rose-700 dark:text-rose-300">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* Issues Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-          {filteredIssues.map((issue) => (
-            <CommunityIssueCard key={issue.id} issue={issue} />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="h-56 rounded-2xl bg-slate-100 dark:bg-slate-800/50 animate-pulse border border-slate-200 dark:border-[#263449]"
+              />
+            ))}
+          </div>
+        ) : issues.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            {issues.map((issue) => (
+              <CommunityIssueCard key={issue.id} issue={issue} />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 p-8 rounded-2xl border border-slate-200 dark:border-[#263449] text-center text-xs text-slate-500 dark:text-slate-400">
+            No community issue clusters found for this category yet.
+          </div>
+        )}
       </section>
 
       {/* 4. HOW IT WORKS */}
@@ -270,7 +346,6 @@ export const CitizenDashboard = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-            {/* Step 1 */}
             <div className="p-6 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs relative">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center text-sm mb-4">
                 01
@@ -279,11 +354,10 @@ export const CitizenDashboard = () => {
                 Report a Problem
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Submit details and photos without needing an account. Receive an instant Reference ID and confidential tracking code.
+                Submit details without needing an account. Receive an instant Reference ID and confidential tracking code.
               </p>
             </div>
 
-            {/* Step 2 */}
             <div className="p-6 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs relative">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center text-sm mb-4">
                 02
@@ -296,7 +370,6 @@ export const CitizenDashboard = () => {
               </p>
             </div>
 
-            {/* Step 3 */}
             <div className="p-6 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs relative">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold flex items-center justify-center text-sm mb-4">
                 03
@@ -309,7 +382,6 @@ export const CitizenDashboard = () => {
               </p>
             </div>
 
-            {/* Step 4 */}
             <div className="p-6 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs relative">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center text-sm mb-4">
                 04
@@ -318,7 +390,7 @@ export const CitizenDashboard = () => {
                 Progress Is Tracked
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Citizens track real-time resolution stages from acknowledgement through inspection and verified resolution.
+                Citizens track real-time resolution stages from acknowledgement through human verification and resolution.
               </p>
             </div>
           </div>
@@ -333,7 +405,7 @@ export const CitizenDashboard = () => {
               Notice a problem in your street?
             </h3>
             <p className="text-sm text-blue-100 max-w-xl">
-              Report it in less than 2 minutes. Help create data-driven civic intelligence that authorities cannot overlook.
+              Report it in less than 2 minutes. Help create data-driven civic intelligence that communities and administrators can act on.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full sm:w-auto">

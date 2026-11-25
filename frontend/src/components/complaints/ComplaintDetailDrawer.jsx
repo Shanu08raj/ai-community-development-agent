@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   ShieldAlert,
   ArrowRight,
+  AlertCircle,
+  PhoneCall,
 } from 'lucide-react';
 
 export const ComplaintDetailDrawer = ({
@@ -23,50 +25,94 @@ export const ComplaintDetailDrawer = ({
   onComplaintUpdated,
 }) => {
   const { addToast } = useToast();
+  const [fetchedRecord, setFetchedRecord] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState('');
 
-  if (!complaint) return null;
+  useEffect(() => {
+    if (!isOpen || !complaint?.id) return;
 
-  const currentStatus = complaint.status;
+    let active = true;
+    complaintService
+      .getComplaintDetail(complaint.id)
+      .then((fullData) => {
+        if (active && fullData) {
+          setFetchedRecord({ id: complaint.id, data: fullData });
+        }
+      })
+      .catch(() => {
+        // Keep base row object if detail call encounters temporary error
+      });
 
-  const handleStatusChange = (e) => {
+    return () => {
+      active = false;
+    };
+  }, [isOpen, complaint?.id]);
+
+  const detail =
+    fetchedRecord && fetchedRecord.id === complaint?.id
+      ? fetchedRecord.data
+      : complaint;
+
+  const handleClose = () => {
+    setSelectedStatus('');
+    setStatusNote('');
+    setUpdateError('');
+    setFetchedRecord(null);
+    onClose();
+  };
+
+  if (!isOpen || !detail) return null;
+
+  const currentStatus = detail.status;
+  const aiInfo = detail.aiAnalysis || {};
+
+  const handleStatusChange = async (e) => {
     e.preventDefault();
-    const newStatus = selectedStatus || currentStatus;
+    if (isUpdating) return;
+    setUpdateError('');
 
+    const newStatus = selectedStatus || currentStatus;
     if (newStatus === currentStatus && !statusNote.trim()) {
       addToast('Please select a new status or enter a supervisory update note.', 'info');
       return;
     }
 
     setIsUpdating(true);
-    setTimeout(() => {
-      const result = complaintService.updateComplaintStatus(
-        complaint.id,
+    try {
+      const result = await complaintService.updateComplaintStatus(
+        detail.id,
         newStatus,
         statusNote
       );
-      setIsUpdating(false);
 
       if (result.success) {
-        addToast(`Complaint ${complaint.id} status updated to ${newStatus}.`, 'success');
+        addToast(`Complaint ${detail.id} status updated to ${newStatus}.`, 'success');
         setStatusNote('');
+        setSelectedStatus('');
+        if (result.complaint) {
+          setFetchedRecord({ id: detail.id, data: result.complaint });
+        }
         if (onComplaintUpdated) {
-          onComplaintUpdated(result.complaint);
+          onComplaintUpdated(result.complaint || detail);
         }
       } else {
-        addToast(result.error || 'Failed to update status', 'error');
+        setUpdateError(result.error || 'Failed to update status.');
+        addToast(result.error || 'Failed to update status.', 'error');
       }
-    }, 400);
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      title={`Complaint ${complaint.id}`}
-      subtitle={`Submitted on ${complaint.submittedDate} • ${complaint.area}`}
+      onClose={handleClose}
+      title={`Complaint ${detail.id}`}
+      subtitle={`Submitted on ${detail.submittedDate} • ${detail.area}`}
       maxWidth="max-w-3xl"
     >
       <div className="space-y-6">
@@ -75,24 +121,24 @@ export const ComplaintDetailDrawer = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white dark:bg-[#151F32] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
-                {complaint.id}
+                {detail.id}
               </span>
-              <StatusBadge status={complaint.status} />
-              <PriorityBadge priority={complaint.priority} />
+              <StatusBadge status={detail.status} />
+              <PriorityBadge priority={detail.priority} />
             </div>
 
             <div className="text-xs text-slate-500 flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5" />
-              {complaint.submittedDate}
+              {detail.submittedDate}
             </div>
           </div>
 
           <div>
             <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-              {complaint.title}
+              {detail.title}
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              {complaint.description}
+              {detail.description}
             </p>
           </div>
 
@@ -100,41 +146,66 @@ export const ComplaintDetailDrawer = ({
             <div className="p-2.5 rounded-lg bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449]">
               <span className="text-[11px] text-slate-400 block font-medium">Category</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {complaint.category}
+                {detail.category}
               </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449]">
               <span className="text-[11px] text-slate-400 block font-medium">Location</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-blue-500" />
-                {complaint.area}, {complaint.district || 'Pune'}
+                {detail.area}, {detail.district || 'Pune'}
               </span>
             </div>
             <div className="p-2.5 rounded-lg bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449]">
-              <span className="text-[11px] text-slate-400 block font-medium">Language & Citizen</span>
+              <span className="text-[11px] text-slate-400 block font-medium">Language Detected</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {complaint.preferredLanguage || 'English'} ({complaint.contactInfo || 'Confidential'})
+                {aiInfo.detectedLanguage || detail.preferredLanguage || 'English'}
+                {aiInfo.detectedLanguageCode ? ` (${aiInfo.detectedLanguageCode})` : ''}
               </span>
             </div>
           </div>
         </div>
 
+        {/* Out-of-Scope / Emergency Advisory Notice */}
+        {aiInfo.isOutOfScope && (
+          <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200 flex items-start gap-2.5">
+            <PhoneCall className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold">Out-of-Scope Advisory Flag</p>
+              <p>{aiInfo.outOfScopeReason}</p>
+              {aiInfo.emergencyGuidance && <p className="font-semibold">{aiInfo.emergencyGuidance}</p>}
+            </div>
+          </div>
+        )}
+
         {/* AI Analysis and Recommended Authority */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-blue-900 dark:text-blue-200">
-              <Cpu className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              AI Intelligence Classification
+            <div className="flex items-center justify-between text-xs font-bold text-blue-900 dark:text-blue-200">
+              <span className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                AI Intelligence Advisory
+              </span>
+              {aiInfo.engineUsed && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/80 dark:bg-slate-900/60 text-blue-700 dark:text-blue-300">
+                  {aiInfo.engineUsed}
+                </span>
+              )}
             </div>
             <div className="flex items-baseline justify-between text-xs">
-              <span className="text-slate-600 dark:text-slate-400">Cluster Confidence:</span>
+              <span className="text-slate-600 dark:text-slate-400">Confidence Score:</span>
               <span className="font-bold text-blue-700 dark:text-blue-300">
-                {complaint.aiConfidence || 94}% (Demo AI Model)
+                {aiInfo.confidence ?? detail.aiConfidence ?? 0}%
               </span>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              Automatically clustered with related ward reports based on natural language similarity and geographical proximity.
+            <div className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+              {aiInfo.priorityReason || 'Advisory classification generated for human triage.'}
             </div>
+            {aiInfo.clusterReason && (
+              <div className="text-[11px] text-blue-700 dark:text-blue-300 pt-1 border-t border-blue-200/50 dark:border-blue-900/40">
+                Cluster: {aiInfo.clusterReason}
+              </div>
+            )}
           </div>
 
           <div className="p-4 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 space-y-2">
@@ -143,10 +214,10 @@ export const ComplaintDetailDrawer = ({
               Recommended Local Authority
             </div>
             <div className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-              {complaint.recommendedAuthority || 'Local Municipal Ward Division'}
+              {aiInfo.recommendedAuthority || detail.recommendedAuthority || 'Pending Manual Assignment'}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              Suggestion generated by jurisdiction mapping. Official forwarding requires manual administrator review.
+              Advisory suggestion only. Official forwarding or resolution requires explicit human administrator approval.
             </div>
           </div>
         </div>
@@ -155,8 +226,15 @@ export const ComplaintDetailDrawer = ({
         <form onSubmit={handleStatusChange} className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xs space-y-3">
           <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
             <span>Administrative Action & Status Update</span>
-            <span className="text-[11px] font-normal text-slate-400">Updates local demo audit trail</span>
+            <span className="text-[11px] font-normal text-slate-400">Persists & records AuditLog</span>
           </h4>
+
+          {updateError && (
+            <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{updateError}</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -193,7 +271,7 @@ export const ComplaintDetailDrawer = ({
           <div className="flex items-center justify-between pt-2">
             <div className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
               <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-              <span>Demo changes persist in localStorage and update audit logs.</span>
+              <span>Human-approved transitions update MongoDB and create an AuditLog.</span>
             </div>
             <Button
               type="submit"
@@ -215,8 +293,8 @@ export const ComplaintDetailDrawer = ({
           </h4>
 
           <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
-            {complaint.timeline && complaint.timeline.length > 0 ? (
-              complaint.timeline.map((ev, i) => (
+            {detail.timeline && detail.timeline.length > 0 ? (
+              detail.timeline.map((ev, i) => (
                 <div key={i} className="relative">
                   <div className="absolute -left-6 top-1 w-4 h-4 rounded-full bg-blue-600 dark:bg-blue-500 border-2 border-white dark:border-[#151F32] flex items-center justify-center">
                     <CheckCircle2 className="w-2.5 h-2.5 text-white" />

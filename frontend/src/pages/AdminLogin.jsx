@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -14,20 +14,28 @@ import {
 import { Button } from '../components/common/Button';
 import { ThemeToggle } from '../components/common/ThemeToggle';
 import { useToast } from '../context/ToastContext';
+import { authService } from '../services/authService';
 
 export const AdminLogin = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [email, setEmail] = useState('admin.demo@jansetu.local');
-  const [password, setPassword] = useState('demo123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    if (authService.isAuthenticated()) {
+      navigate('/admin', { replace: true });
+    }
+  }, [navigate]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isLoading) return;
     setError('');
 
     if (!email.trim()) {
@@ -40,16 +48,22 @@ export const AdminLogin = () => {
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      addToast('Entering Admin Demonstration Environment.', 'info');
+    try {
+      await authService.login(email.trim(), password, rememberMe);
+      addToast('Signed in to JanSetu AI Admin Dashboard.', 'success');
       navigate('/admin');
-    }, 400);
+    } catch (err) {
+      const msg = err.message || 'Invalid credentials. Please try again.';
+      setError(msg);
+      addToast(msg, 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleForgotPassword = (e) => {
     e.preventDefault();
-    addToast('Demo Mode Notice: Real user credentials and password recovery are disabled in this prototype.', 'info');
+    addToast('Please contact your JanSetu system administrator to reset credentials.', 'info');
   };
 
   return (
@@ -86,7 +100,7 @@ export const AdminLogin = () => {
               </h2>
 
               <p className="text-xs sm:text-sm text-blue-100/90 mt-3 leading-relaxed">
-                Supervisory dashboard for inspecting citizen reports, managing AI cluster groups, and recommending municipal dispatch.
+                Supervisory dashboard for inspecting citizen reports, reviewing AI cluster groups, and managing verified civic workflows.
               </p>
             </div>
 
@@ -114,19 +128,18 @@ export const AdminLogin = () => {
                 </p>
               </div>
 
-              {/* Demo Mode Notice Box */}
               <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2.5">
                 <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-semibold text-blue-900 dark:text-blue-200 block">
-                    Demonstration Mode Active
+                    Authorized Administrator Access
                   </span>
-                  Authentication is not enabled yet. Click <strong>Sign In</strong> below to directly explore the Admin Dashboard.
+                  Sign in with your administrator credentials. All supervisory updates are logged in the immutable audit trail.
                 </div>
               </div>
 
               {error && (
-                <div className="p-3 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs flex items-center gap-2">
+                <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -184,7 +197,7 @@ export const AdminLogin = () => {
                       onChange={(e) => setRememberMe(e.target.checked)}
                       className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-slate-600 dark:text-slate-400">Remember demo session</span>
+                    <span className="text-slate-600 dark:text-slate-400">Keep session active</span>
                   </label>
 
                   <a
@@ -217,7 +230,7 @@ export const AdminLogin = () => {
 
       {/* Footer */}
       <footer className="p-4 text-center text-xs text-slate-400">
-        JanSetu AI Civic Platform • Demonstration Interface
+        JanSetu AI Civic Platform • Independent Community Intelligence
       </footer>
     </div>
   );

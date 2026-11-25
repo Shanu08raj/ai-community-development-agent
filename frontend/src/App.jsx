@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import { CitizenLayout } from './layouts/CitizenLayout';
@@ -7,6 +7,14 @@ import { CitizenDashboard } from './pages/CitizenDashboard';
 import { AdminLogin } from './pages/AdminLogin';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { NotFound } from './pages/NotFound';
+import { authService } from './services/authService';
+
+const ProtectedAdminRoute = ({ children }) => {
+  if (!authService.isAuthenticated()) {
+    return <Navigate to="/admin/login" replace />;
+  }
+  return children;
+};
 
 function App() {
   return (
@@ -19,11 +27,18 @@ function App() {
               <Route index element={<CitizenDashboard />} />
             </Route>
 
-            {/* Admin Authentication (Demo) */}
+            {/* Admin Authentication */}
             <Route path="/admin/login" element={<AdminLogin />} />
 
-            {/* Admin Management Dashboard */}
-            <Route path="/admin" element={<AdminDashboard />} />
+            {/* Protected Admin Management Dashboard */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedAdminRoute>
+                  <AdminDashboard />
+                </ProtectedAdminRoute>
+              }
+            />
 
             {/* 404 Catch-All */}
             <Route path="*" element={<NotFound />} />

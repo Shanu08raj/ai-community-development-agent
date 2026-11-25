@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { useToast } from '../../context/ToastContext';
+import { authService } from '../../services/authService';
 
 export const AdminTopNav = ({
   pageTitle,
@@ -27,26 +28,32 @@ export const AdminTopNav = ({
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const demoNotifications = [
+  const currentAdmin = authService.getStoredAdmin() || {
+    name: 'Administrator',
+    email: 'admin@jansetu.local',
+    role: 'ADMIN',
+  };
+
+  const initials = (currentAdmin.name || 'AD')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+
+  const statusAlerts = [
     {
       id: 1,
-      title: 'New AI Cluster Formed',
-      desc: 'Ward 12 water shortage complaints reached 35 reports threshold.',
-      time: '12m ago',
-      type: 'warning',
-    },
-    {
-      id: 2,
-      title: 'Citizen Status Acknowledged',
-      desc: 'PWD response unit noted pothole JS-2026-8902.',
-      time: '1h ago',
+      title: 'Human-in-the-Loop Active',
+      desc: 'AI classifications and authority suggestions await your supervisory review.',
+      time: 'Live',
       type: 'info',
     },
     {
-      id: 3,
-      title: 'Resolution Verification',
-      desc: 'Market dumpster clearance verified by ward inspector.',
-      time: '3h ago',
+      id: 2,
+      title: 'Audit Logging Enabled',
+      desc: 'All complaint status transitions are appended to immutable MongoDB audit trails.',
+      time: 'Live',
       type: 'success',
     },
   ];
@@ -64,8 +71,9 @@ export const AdminTopNav = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleDemoLogout = () => {
-    addToast('Logged out of demo session. Returning to login page.', 'info');
+  const handleLogout = () => {
+    authService.logout();
+    addToast('Signed out of administrator session.', 'info');
     navigate('/admin/login');
   };
 
@@ -116,21 +124,21 @@ export const AdminTopNav = ({
             aria-label="View notifications"
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-[#151F32]" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-[#151F32]" />
           </button>
 
           {notificationsOpen && (
             <div className="absolute right-0 mt-2 w-80 sm:w-88 rounded-2xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xl py-2 z-40 animate-in fade-in zoom-in-95">
               <div className="px-4 py-2 border-b border-slate-100 dark:border-[#263449] flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Notifications (Demo)
+                  System Notices
                 </span>
                 <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
-                  3 New
+                  Active
                 </span>
               </div>
               <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-72 overflow-y-auto">
-                {demoNotifications.map((n) => (
+                {statusAlerts.map((n) => (
                   <div key={n.id} className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                     <div className="flex items-start gap-2.5">
                       {n.type === 'warning' && <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />}
@@ -168,14 +176,14 @@ export const AdminTopNav = ({
             aria-haspopup="true"
           >
             <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
-              AD
+              {initials}
             </div>
             <div className="text-left hidden sm:block">
               <span className="text-xs font-semibold block text-slate-800 dark:text-slate-200 leading-tight">
-                Admin Demo
+                {currentAdmin.name}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 block leading-tight">
-                Supervisor
+                {currentAdmin.role || 'ADMIN'}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -185,10 +193,10 @@ export const AdminTopNav = ({
             <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#151F32] border border-slate-200 dark:border-[#263449] shadow-xl py-2 z-40 animate-in fade-in zoom-in-95">
               <div className="px-4 py-2 border-b border-slate-100 dark:border-[#263449]">
                 <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                  Demo Administrator
+                  {currentAdmin.name}
                 </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  admin.demo@jansetu.local
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {currentAdmin.email}
                 </p>
               </div>
               <div className="py-1">
@@ -196,7 +204,7 @@ export const AdminTopNav = ({
                   type="button"
                   onClick={() => {
                     setProfileOpen(false);
-                    addToast('Administrator role: Demo Supervisor (Read/Write)', 'info');
+                    addToast(`Signed in as ${currentAdmin.name} (${currentAdmin.role || 'ADMIN'})`, 'info');
                   }}
                   className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
                 >
@@ -205,11 +213,11 @@ export const AdminTopNav = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleDemoLogout}
+                  onClick={handleLogout}
                   className="w-full flex items-center gap-2.5 px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors text-left font-medium"
                 >
                   <LogOut className="w-4 h-4 text-rose-500" />
-                  Exit Demo (Sign Out)
+                  Sign Out
                 </button>
               </div>
             </div>
