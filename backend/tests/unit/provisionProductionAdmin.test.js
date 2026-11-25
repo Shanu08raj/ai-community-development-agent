@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { provisionProductionAdmin } from '../../src/scripts/provisionProductionAdmin.js';
+import {
+  provisionProductionAdmin,
+  runStartupAdminProvisioning,
+} from '../../src/scripts/provisionProductionAdmin.js';
 import { compareSecret } from '../../src/utils/crypto.js';
 
 function createMockDeps(overrides = {}) {
@@ -22,117 +25,176 @@ function createMockDeps(overrides = {}) {
   };
 }
 
-describe('provisionProductionAdmin script', () => {
-  it('1. Rejects execution unless NODE_ENV is strictly production', async () => {
+const VALID_TOKEN = 'prod_confirm_token_min_16_chars_secure';
+
+describe('One-time production admin provisioning mechanism', () => {
+  it('1. Skips cleanly in disabled mode or non-production environments without touching the database', async () => {
     const deps = createMockDeps();
 
+    // Non-production even if ADMIN_PROVISION_ENABLED=true
     for (const badEnv of [undefined, 'development', 'test', 'staging']) {
-      await expect(
-        provisionProductionAdmin({
-          envVars: {
-            NODE_ENV: badEnv,
-            ADMIN_PROVISION_EMAIL: 'ops.admin@example.org',
-            ADMIN_PROVISION_PASSWORD: 'StrongProdPassword!2026',
-          },
-          argv: ['--confirm'],
-          deps,
-        })
-      ).rejects.toThrow(/NODE_ENV=production/i);
+      const res = await provisionProductionAdmin({
+        envVars: {
+          NODE_ENV: badEnv,
+          ADMIN_PROVISION_ENABLED: 'true',
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_EMAIL: 'ops.admin@example.org',
+          SEED_ADMIN_PASSWORD: 'StrongProdPassword!2026',
+        },
+        deps,
+      });
+      expect(res).toEqual({
+        provisioned: false,
+        skipped: true,
+        reason: 'non_production_environment',
+      });
+    }
+
+    // Disabled in production
+    for (const flag of [undefined, '', 'false', '0', 'no']) {
+      const res = await provisionProductionAdmin({
+        envVars: {
+          NODE_ENV: 'production',
+          ADMIN_PROVISION_ENABLED: flag,
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_EMAIL: 'ops.admin@example.org',
+          SEED_ADMIN_PASSWORD: 'StrongProdPassword!2026',
+        },
+        deps,
+      });
+      expect(res).toEqual({
+        provisioned: false,
+        skipped: true,
+        reason: 'provisioning_disabled',
+      });
     }
 
     expect(deps.connectDB).not.toHaveBeenCalled();
     expect(deps.Admin.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('2. Requires explicit confirmation flag (--confirm or ADMIN_PROVISION_CONFIRM=true) before connecting to DB', async () => {
+  it('2. Rejects missing or invalid SEED_ADMIN_EMAIL and missing or short SEED_ADMIN_PASSWORD', async () => {
     const deps = createMockDeps();
 
     await expect(
       provisionProductionAdmin({
         envVars: {
           NODE_ENV: 'production',
-          ADMIN_PROVISION_EMAIL: 'ops.admin@example.org',
-          ADMIN_PROVISION_PASSWORD: 'StrongProdPassword!2026',
+          ADMIN_PROVISION_ENABLED: 'true',
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_PASSWORD: 'StrongProdPassword!2026',
         },
-        argv: [],
         deps,
       })
-    ).rejects.toThrow(/Explicit confirmation is required/i);
-
-    expect(deps.connectDB).not.toHaveBeenCalled();
-    expect(deps.Admin.findOneAndUpdate).not.toHaveBeenCalled();
-  });
-
-  it('3. Rejects missing or invalid ADMIN_PROVISION_EMAIL and missing or short ADMIN_PROVISION_PASSWORD', async () => {
-    const deps = createMockDeps();
+    ).rejects.toThrow(/SEED_ADMIN_EMAIL/i);
 
     await expect(
       provisionProductionAdmin({
         envVars: {
           NODE_ENV: 'production',
-          ADMIN_PROVISION_PASSWORD: 'StrongProdPassword!2026',
+          ADMIN_PROVISION_ENABLED: 'true',
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_EMAIL: 'invalid-email',
+          SEED_ADMIN_PASSWORD: 'StrongProdPassword!2026',
         },
-        argv: ['--confirm'],
         deps,
       })
-    ).rejects.toThrow(/ADMIN_PROVISION_EMAIL/i);
+    ).rejects.toThrow(/SEED_ADMIN_EMAIL/i);
 
     await expect(
       provisionProductionAdmin({
         envVars: {
           NODE_ENV: 'production',
-          ADMIN_PROVISION_EMAIL: 'not-an-email',
-          ADMIN_PROVISION_PASSWORD: 'StrongProdPassword!2026',
+          ADMIN_PROVISION_ENABLED: 'true',
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_EMAIL: 'ops.admin@example.org',
         },
-        argv: ['--confirm'],
         deps,
       })
-    ).rejects.toThrow(/ADMIN_PROVISION_EMAIL/i);
+    ).rejects.toThrow(/SEED_ADMIN_PASSWORD/i);
 
     await expect(
       provisionProductionAdmin({
         envVars: {
           NODE_ENV: 'production',
-          ADMIN_PROVISION_EMAIL: 'ops.admin@example.org',
+          ADMIN_PROVISION_ENABLED: 'true',
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_EMAIL: 'ops.admin@example.org',
+          SEED_ADMIN_PASSWORD: 'short',
         },
-        argv: ['--confirm'],
-        deps,
-      })
-    ).rejects.toThrow(/ADMIN_PROVISION_PASSWORD/i);
-
-    await expect(
-      provisionProductionAdmin({
-        envVars: {
-          NODE_ENV: 'production',
-          ADMIN_PROVISION_EMAIL: 'ops.admin@example.org',
-          ADMIN_PROVISION_PASSWORD: 'short',
-        },
-        argv: ['--confirm'],
         deps,
       })
     ).rejects.toThrow(/at least 8 characters/i);
 
     expect(deps.connectDB).not.toHaveBeenCalled();
+    expect(deps.Admin.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('4. Normalizes email, hashes password with hashSecret(), upserts only the matching Admin doc, and closes DB', async () => {
+  it('3. Rejects missing, short, or mismatched ADMIN_PROVISION_CONFIRM_TOKEN without leaking tokens', async () => {
+    const deps = createMockDeps();
+
+    const badTokenPairs = [
+      ['', VALID_TOKEN],
+      [VALID_TOKEN, ''],
+      ['too_short', 'too_short'],
+      [VALID_TOKEN, 'completely_different_server_token_12345'],
+    ];
+
+    for (const [confirmTok, serverTok] of badTokenPairs) {
+      let caught = null;
+      try {
+        await provisionProductionAdmin({
+          envVars: {
+            NODE_ENV: 'production',
+            ADMIN_PROVISION_ENABLED: 'true',
+            ADMIN_PROVISION_CONFIRM_TOKEN: confirmTok,
+            ADMIN_PROVISION_SERVER_TOKEN: serverTok,
+            SEED_ADMIN_EMAIL: 'ops.admin@example.org',
+            SEED_ADMIN_PASSWORD: 'StrongProdPassword!2026',
+          },
+          deps,
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeTruthy();
+      expect(caught.message).toMatch(/confirmation token/i);
+      if (confirmTok) expect(caught.message).not.toContain(confirmTok);
+      if (serverTok) expect(caught.message).not.toContain(serverTok);
+    }
+
+    expect(deps.connectDB).not.toHaveBeenCalled();
+    expect(deps.Admin.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('4. Normalizes email, hashes SEED_ADMIN_PASSWORD, upserts idempotently as ADMIN & isActive, and closes DB cleanly', async () => {
     const deps = createMockDeps();
     const rawPassword = 'StrongProdPassword!2026';
 
-    const result = await provisionProductionAdmin({
-      envVars: {
-        NODE_ENV: 'production',
-        ADMIN_PROVISION_EMAIL: '  Prod.Admin@JanSetu.Org  ',
-        ADMIN_PROVISION_PASSWORD: rawPassword,
-        ADMIN_PROVISION_FULL_NAME: 'Production Supervisor',
-        ADMIN_PROVISION_DEPARTMENT: 'Civic Ops Desk',
-      },
-      argv: ['--confirm'],
-      deps,
-    });
+    const envVars = {
+      NODE_ENV: 'production',
+      ADMIN_PROVISION_ENABLED: 'true',
+      ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+      ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+      SEED_ADMIN_EMAIL: '  Prod.Admin@JanSetu.Org  ',
+      SEED_ADMIN_PASSWORD: rawPassword,
+      ADMIN_PROVISION_FULL_NAME: 'Production Supervisor',
+      ADMIN_PROVISION_DEPARTMENT: 'Civic Ops Desk',
+    };
 
-    expect(deps.connectDB).toHaveBeenCalledTimes(1);
-    expect(deps.Admin.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    const first = await provisionProductionAdmin({ envVars, manageConnection: true, deps });
+    const second = await provisionProductionAdmin({ envVars, manageConnection: true, deps });
+
+    expect(deps.connectDB).toHaveBeenCalledTimes(2);
+    expect(deps.disconnectDB).toHaveBeenCalledTimes(2);
+    expect(deps.Admin.findOneAndUpdate).toHaveBeenCalledTimes(2);
 
     const [filter, update, options] = deps.Admin.findOneAndUpdate.mock.calls[0];
     expect(filter).toEqual({ email: 'prod.admin@jansetu.org' });
@@ -149,23 +211,24 @@ describe('provisionProductionAdmin script', () => {
       runValidators: true,
     });
 
-    // Summary never leaks sensitive credentials, hashes, or URIs
-    const serialized = JSON.stringify(result);
+    // Summary never leaks sensitive credentials, tokens, emails, hashes, or URIs
+    const serialized = JSON.stringify({ first, second });
     expect(serialized).not.toContain(rawPassword);
     expect(serialized).not.toContain(update.$set.passwordHash);
-    expect(result).toEqual({
-      success: true,
+    expect(serialized).not.toContain(VALID_TOKEN);
+    expect(serialized).not.toContain('prod.admin@jansetu.org');
+    expect(first).toEqual({
+      provisioned: true,
+      skipped: false,
       adminId: '67448831f1a23e9a99999999',
       role: 'ADMIN',
       isActive: true,
       fullName: 'Production Supervisor',
       department: 'Civic Ops Desk',
     });
-
-    expect(deps.disconnectDB).toHaveBeenCalledTimes(1);
   });
 
-  it('5. Supports ADMIN_PROVISION_CONFIRM=true and closes DB even if upsert fails', async () => {
+  it('5. Closes DB connection on write failure when managing connection', async () => {
     const deps = createMockDeps({
       Admin: {
         findOneAndUpdate: vi.fn().mockRejectedValue(new Error('Atlas write timeout')),
@@ -176,16 +239,73 @@ describe('provisionProductionAdmin script', () => {
       provisionProductionAdmin({
         envVars: {
           NODE_ENV: 'production',
-          ADMIN_PROVISION_CONFIRM: 'true',
-          ADMIN_PROVISION_EMAIL: 'ops@jansetu.org',
-          ADMIN_PROVISION_PASSWORD: 'AnotherStrongPass!2026',
+          ADMIN_PROVISION_ENABLED: 'true',
+          ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+          ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+          SEED_ADMIN_EMAIL: 'ops@jansetu.org',
+          SEED_ADMIN_PASSWORD: 'AnotherStrongPass!2026',
         },
-        argv: [],
+        manageConnection: true,
         deps,
       })
     ).rejects.toThrow('Atlas write timeout');
 
     expect(deps.connectDB).toHaveBeenCalledTimes(1);
     expect(deps.disconnectDB).toHaveBeenCalledTimes(1);
+  });
+
+  it('6. Startup hook runs without closing active server DB connection, logs only sanitized fields, and handles errors safely', async () => {
+    const deps = createMockDeps();
+    const mockLogger = { info: vi.fn(), error: vi.fn() };
+    const secretPassword = 'StartupSuperSecretPassword!99';
+
+    // Success on startup keeps shared server DB connection open
+    const okRes = await runStartupAdminProvisioning({
+      envVars: {
+        NODE_ENV: 'production',
+        ADMIN_PROVISION_ENABLED: 'true',
+        ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+        ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+        SEED_ADMIN_EMAIL: 'startup.admin@jansetu.org',
+        SEED_ADMIN_PASSWORD: secretPassword,
+      },
+      deps,
+      log: mockLogger,
+    });
+
+    expect(okRes.provisioned).toBe(true);
+    expect(deps.connectDB).not.toHaveBeenCalled();
+    expect(deps.disconnectDB).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledTimes(1);
+    const infoLog = JSON.stringify(mockLogger.info.mock.calls[0]);
+    expect(infoLog).not.toContain(secretPassword);
+    expect(infoLog).not.toContain(VALID_TOKEN);
+    expect(infoLog).not.toContain('startup.admin@jansetu.org');
+
+    // Failure on startup is caught safely and logged without leaking credentials
+    const failDeps = createMockDeps({
+      Admin: {
+        findOneAndUpdate: vi.fn().mockRejectedValue(new Error('Simulated DB error')),
+      },
+    });
+    const failRes = await runStartupAdminProvisioning({
+      envVars: {
+        NODE_ENV: 'production',
+        ADMIN_PROVISION_ENABLED: 'true',
+        ADMIN_PROVISION_CONFIRM_TOKEN: VALID_TOKEN,
+        ADMIN_PROVISION_SERVER_TOKEN: VALID_TOKEN,
+        SEED_ADMIN_EMAIL: 'startup.admin@jansetu.org',
+        SEED_ADMIN_PASSWORD: secretPassword,
+      },
+      deps: failDeps,
+      log: mockLogger,
+    });
+
+    expect(failRes.failed).toBe(true);
+    expect(failRes.provisioned).toBe(false);
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+    const errLog = JSON.stringify(mockLogger.error.mock.calls[0]);
+    expect(errLog).not.toContain(secretPassword);
+    expect(errLog).not.toContain(VALID_TOKEN);
   });
 });

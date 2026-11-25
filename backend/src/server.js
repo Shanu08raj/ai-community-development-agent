@@ -1,13 +1,17 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import app from './app.js';
 import connectDB, { disconnectDB } from './config/db.js';
 import { env, validateEnv } from './config/env.js';
+import { runStartupAdminProvisioning } from './scripts/provisionProductionAdmin.js';
 import { logger } from './utils/logger.js';
 
 let server;
 
-async function startServer() {
+export async function startServer() {
   validateEnv();
   await connectDB({ exitOnError: true });
+  await runStartupAdminProvisioning();
 
   server = app.listen(env.PORT, () => {
     logger.info('JanSetu AI Backend running', {
@@ -15,6 +19,8 @@ async function startServer() {
       environment: env.NODE_ENV,
     });
   });
+
+  return server;
 }
 
 async function shutdown(signal) {
@@ -26,10 +32,16 @@ async function shutdown(signal) {
   process.exit(0);
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
-startServer().catch((err) => {
-  console.error('Server startup failed:', err.message);
-  process.exit(1);
-});
+if (isDirectRun) {
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  startServer().catch((err) => {
+    console.error('Server startup failed:', err.message);
+    process.exit(1);
+  });
+}
